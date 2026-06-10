@@ -3,11 +3,12 @@
 import { useState, useEffect, useRef, use, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Compass, ShieldAlert, ShieldCheck, MapPin, Radio, Bell, AlertTriangle } from 'lucide-react'
+import { io } from 'socket.io-client'
 
 interface Student {
   id: string
   name: string
-  roll_number: string
+  rollNumber: string
   department: string
 }
 
@@ -34,6 +35,39 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
   // Watcher ref
   const watchIdRef = useRef<number | null>(null)
   const alertIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const socketRef = useRef<any>(null)
+
+  // Socket.io room connection setup
+  useEffect(() => {
+    socketRef.current = io()
+    socketRef.current.emit('join-room', sessionId)
+    
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect()
+      }
+    }
+  }, [sessionId])
+
+  // Emit student identity when loaded
+  useEffect(() => {
+    if (student && socketRef.current) {
+      socketRef.current.emit('student-joined', {
+        roomId: sessionId,
+        student: {
+          id: student.id,
+          name: student.name,
+          roll_number: student.rollNumber,
+          department: student.department
+        },
+        attendance: {
+          studentId: student.id,
+          status: 'Active',
+          joinedAt: new Date().toISOString()
+        }
+      })
+    }
+  }, [student, sessionId])
 
   // 1. Fetch student info from search param or localStorage
   useEffect(() => {
@@ -45,25 +79,25 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
       const stored = localStorage.getItem(`classtrack_student_${sessionId}`)
       if (stored) {
         const parsed = JSON.parse(stored)
-        if (parsed.id === studentIdParam) {
-          foundStudent = parsed
-        }
-      }
-      
-      if (!foundStudent) {
-        // Fallback fallback state if parameter is present but not in storage
         foundStudent = {
-          id: studentIdParam,
-          name: 'Student',
-          roll_number: 'N/A',
-          department: 'N/A'
+          id: parsed.id,
+          name: parsed.name,
+          rollNumber: parsed.rollNumber || parsed.roll_number || 'N/A',
+          department: parsed.department
         }
       }
-    } else {
-      // Try resolving directly from localStorage
-      const stored = localStorage.getItem(`classtrack_student_${sessionId}`)
-      if (stored) {
-        foundStudent = JSON.parse(stored)
+    }
+
+    if (foundStudent && foundStudent.id === studentIdParam) {
+      // Validated
+    } else if (foundStudent) {
+      // Validated from localstorage fallback
+    } else if (studentIdParam) {
+      foundStudent = {
+        id: studentIdParam,
+        name: 'Student',
+        rollNumber: 'N/A',
+        department: 'N/A'
       }
     }
 
@@ -105,12 +139,12 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
       setTrackingStatus('tracking')
 
       try {
-        const res = await fetch('/api/student/track', {
+        const res = await fetch('/api/location', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            student_id: student.id,
-            session_id: sessionId,
+            studentId: student.id,
+            sessionId: sessionId,
             latitude,
             longitude
           })
@@ -118,10 +152,24 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
 
         const data = await res.json()
         if (res.ok) {
-          setInsideRadius(data.inside_radius)
+          setInsideRadius(data.insideRadius)
           setDistance(data.distance)
           setRadius(data.radius)
           setLastUpdated(new Date())
+
+          // Emit location update over Socket.io
+          if (socketRef.current) {
+            socketRef.current.emit('location-update', {
+              roomId: sessionId,
+              location: {
+                student_id: student.id,
+                latitude,
+                longitude,
+                inside_radius: data.insideRadius,
+                last_seen: new Date().toISOString()
+              }
+            })
+          }
         } else if (data.sessionEnded) {
           setError('This classroom session has ended.')
           setTrackingStatus('error')
@@ -332,7 +380,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
               </div>
               <div className="bg-zinc-950/40 border border-zinc-800/50 rounded-xl p-3">
                 <span className="text-xs text-zinc-500 block">Roll / Student ID</span>
-                <span className="text-white font-medium block truncate mt-0.5">{student?.roll_number}</span>
+                <span className="text-white font-medium block truncate mt-0.5">{student?.rollNumber}</span>
               </div>
             </div>
 

@@ -1,0 +1,78 @@
+// ClassTrack Prisma Schema
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Admin {
+  id           String    @id @default(uuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  sessions     Session[]
+}
+
+model Session {
+  id              String           @id @default(uuid())
+  adminId         String
+  admin           Admin            @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  sessionName     String
+  classroomName   String
+  latitude        Float
+  longitude       Float
+  radius          Int              // radius in meters
+  qrCode          String?
+  isActive        Boolean          @default(true)
+  startTime       DateTime
+  endTime         DateTime
+  createdAt       DateTime         @default(now())
+  students        Student[]
+  attendances     Attendance[]
+  locationUpdates LocationUpdate[]
+}
+
+model Student {
+  id             String          @id @default(uuid())
+  sessionId      String
+  session        Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  name           String
+  rollNumber     String
+  department     String
+  createdAt      DateTime        @default(now())
+  attendance     Attendance?
+  locationUpdate LocationUpdate?
+
+  @@unique([sessionId, rollNumber])
+}
+
+model Attendance {
+  id        String   @id @default(uuid())
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentId String   @unique
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  ipAddress String?
+  userAgent String?
+  joinedAt  DateTime @default(now())
+  status    String   @default("Active") // "Active", "Offline"
+
+  @@unique([sessionId, studentId])
+}
+
+model LocationUpdate {
+  id           String   @id @default(uuid())
+  sessionId    String
+  session      Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentId    String   @unique
+  student      Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  latitude     Float
+  longitude    Float
+  insideRadius Boolean  @default(true)
+  lastSeen     DateTime @default(now())
+}

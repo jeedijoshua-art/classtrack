@@ -6,8 +6,8 @@ import { MapPin, User, Hash, GraduationCap, ShieldAlert, CheckCircle } from 'luc
 
 interface SessionInfo {
   id: string
-  session_name: string
-  classroom_name: string
+  sessionName: string
+  classroomName: string
   isExpired: boolean
 }
 
@@ -32,7 +32,7 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
   useEffect(() => {
     async function fetchSession() {
       try {
-        const res = await fetch(`/api/session?id=${sessionId}`)
+        const res = await fetch(`/api/sessions?id=${sessionId}`)
         const data = await res.json()
 
         if (!res.ok) {
@@ -40,7 +40,12 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
         } else if (data.isExpired) {
           setSessionError('This attendance session has already expired.')
         } else {
-          setSession(data)
+          setSession({
+            id: data.id,
+            sessionName: data.sessionName,
+            classroomName: data.classroomName,
+            isExpired: data.isExpired
+          })
         }
       } catch (err) {
         setSessionError('Network error. Failed to load session.')
@@ -66,14 +71,14 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
     setSubmitting(true)
 
     try {
-      const res = await fetch('/api/student/join', {
+      const res = await fetch('/api/attendance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
-          roll_number: rollNumber.trim(),
+          rollNumber: rollNumber.trim(),
           department: department.trim(),
-          session_id: sessionId
+          sessionId: sessionId
         })
       })
 
@@ -141,8 +146,8 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
             Check In to Class
           </h2>
           <p className="mt-2 text-sm text-zinc-400">
-            Session: <span className="text-violet-400 font-semibold">{session?.session_name}</span> in{' '}
-            <span className="text-violet-400 font-semibold">{session?.classroom_name}</span>
+            Session: <span className="text-violet-400 font-semibold">{session?.sessionName}</span> in{' '}
+            <span className="text-violet-400 font-semibold">{session?.classroomName}</span>
           </p>
         </div>
 

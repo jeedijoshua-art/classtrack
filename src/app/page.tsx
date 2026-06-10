@@ -2,12 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { Lock, Mail, User, ShieldAlert, ArrowRight, Eye, EyeOff, MapPin } from 'lucide-react'
 
 export default function Home() {
   const router = useRouter()
-  const supabase = createClient()
 
   // Form states
   const [isLogin, setIsLogin] = useState(true)
@@ -18,78 +16,50 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  // Check if already authenticated
+  // Check if already authenticated by hitting our session API
   useEffect(() => {
     async function checkAuth() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        router.push('/dashboard')
+      try {
+        const res = await fetch('/api/sessions')
+        if (res.ok) {
+          router.push('/dashboard')
+        }
+      } catch (err) {
+        // Ignored
       }
     }
     checkAuth()
-  }, [router, supabase])
+  }, [router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     setLoading(true)
 
-    if (isLogin) {
-      // Login flow
-      const { error: signInErr } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+    try {
+      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register'
+      const payload = isLogin
+        ? { email, password }
+        : { name, email, password }
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       })
 
-      if (signInErr) {
-        setError(signInErr.message)
+      const data = await res.json()
+
+      if (!res.ok) {
+        setError(data.error || 'Authentication failed')
         setLoading(false)
       } else {
         router.push('/dashboard')
         router.refresh()
       }
-    } else {
-      // Register flow
-      if (!name.trim()) {
-        setError('Name is required')
-        setLoading(false)
-        return
-      }
-
-      const { error: signUpErr, data } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            name: name,
-          },
-        },
-      })
-
-      if (signUpErr) {
-        setError(signUpErr.message)
-        setLoading(false)
-      } else {
-        // Log in immediately or display confirmation message
-        if (data?.user?.identities?.length === 0) {
-          setError('Email already exists. Please login.')
-          setLoading(false)
-        } else {
-          // Attempt automatic login or show success message
-          const { error: autoSignInErr } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-          })
-          if (autoSignInErr) {
-            setIsLogin(true)
-            setError('Account created! Please log in.')
-            setLoading(false)
-          } else {
-            router.push('/dashboard')
-            router.refresh()
-          }
-        }
-      }
+    } catch (err) {
+      setError('Connection failed. Please check your network and try again.')
+      setLoading(false)
     }
   }
 

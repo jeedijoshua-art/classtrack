@@ -1,0 +1,67 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/lib/db'
+import bcrypt from 'bcrypt'
+import { signToken } from '@/lib/jwt'
+import { z } from 'zod'
+
+const loginSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(1, 'Password is required')
+})
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const parsed = loginSchema.safeParse(body)
+
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
+    }
+
+    const { email, password } = parsed.data
+
+    // Fetch Admin profile
+    const admin = await db.admin.findUnique({
+      where: { email }
+    })
+
+    if (!admin) {
+      return NextResponse.json({ error: 'Invalid email or password' }, { status: 400 })
+    }
+
+    // Verify bcrypt hash comparison
+    const isValid = await bcrypt.compare(password, admin.passwordHash)
+    if (!isValid) {
+      return NextResponse.json({ error: 'Invalid email or password' }, { status: 400 })
+    }
+
+    // Sign token
+    const token = signToken({
+      id: admin.id,
+      email: admin.email,
+      name: admin.name
+    })
+
+    const response = NextResponse.json({
+      success: true,
+      user: {
+        id: admin.id,
+        email: admin.email,
+        name: admin.name
+      }
+    })
+
+    // Set HTTP-only cookie
+    response.cookies.set('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60 // 7 days
+    })
+
+    return response
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
+}

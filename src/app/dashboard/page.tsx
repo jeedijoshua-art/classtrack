@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { io } from 'socket.io-client'
 import {
   MapPin,
   Users,
@@ -87,7 +87,7 @@ interface ToastNotification {
 
 export default function Dashboard() {
   const router = useRouter()
-  const supabase = createClient()
+  const socketRef = useRef<any>(null)
 
   // Teacher Profile
   const [teacher, setTeacher] = useState<{ name: string; email: string } | null>(null)
@@ -137,38 +137,38 @@ export default function Dashboard() {
   useEffect(() => {
     async function loadInitialData() {
       try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
+        const res = await fetch('/api/sessions')
+        if (!res.ok) {
           router.push('/')
           return
         }
 
-        // Fetch public admin profile details
-        const { data: admin } = await supabase
-          .from('admins')
-          .select('*')
-          .eq('id', user.id)
-          .single()
-
-        setTeacher({
-          name: admin?.name || 'Teacher',
-          email: user.email || ''
-        })
-
-        // Fetch recent sessions
-        const res = await fetch('/api/session')
         const data = await res.json()
-        
+
+        if (data.admin) {
+          setTeacher(data.admin)
+        }
+
         if (data.sessions) {
-          setSessionsList(data.sessions)
+          // Normalize the sessions to snake_case format for frontend compatibility
+          const normalizedSessions = data.sessions.map((s: any) => ({
+            id: s.id,
+            session_name: s.sessionName,
+            classroom_name: s.classroomName,
+            radius: s.radius,
+            latitude: s.latitude,
+            longitude: s.longitude,
+            start_time: s.startTime,
+            end_time: s.endTime
+          }))
+
+          setSessionsList(normalizedSessions)
           
-          // Determine if there is a session currently active
-          const now = new Date().getTime()
-          const active = data.sessions.find((s: Session) => new Date(s.end_time).getTime() > now)
+          const now = Date.now()
+          const active = normalizedSessions.find((s: any) => new Date(s.end_time).getTime() > now && s.isActive !== false)
           if (active) {
             setActiveSession(active)
             setNewRadiusInput(active.radius.toString())
-            // Load initial student details for this active session
             await loadSessionData(active.id)
           }
         }
@@ -180,40 +180,54 @@ export default function Dashboard() {
     }
 
     loadInitialData()
-  }, [router, supabase])
+  }, [router])
 
   // Load students, attendance, and locations for an active session
   async function loadSessionData(sessionId: string) {
-    // 1. Fetch Students
-    const { data: studentsData } = await supabase
-      .from('students')
-      .select('*')
-      .eq('session_id', sessionId)
-    
-    // 2. Fetch Locations
-    const { data: locationsData } = await supabase
-      .from('locations')
-      .select('*')
-      .eq('session_id', sessionId)
+    try {
+      const res = await fetch(`/api/dashboard?sessionId=${sessionId}`)
+      if (!res.ok) return
+      const data = await res.json()
 
-    // 3. Fetch Attendance
-    const { data: attendanceData } = await supabase
-      .from('attendance')
-      .select('*')
-      .eq('session_id', sessionId)
+      const studentsMap: Record<string, Student> = {}
+      data.students?.forEach((s: any) => {
+        studentsMap[s.id] = {
+          id: s.id,
+          name: s.name,
+          roll_number: s.rollNumber,
+          department: s.department,
+          created_at: s.createdAt
+        }
+      })
 
-    const studentsMap: Record<string, Student> = {}
-    studentsData?.forEach((s) => { studentsMap[s.id] = s })
+      const locationsMap: Record<string, Location> = {}
+      data.locations?.forEach((l: any) => {
+        locationsMap[l.studentId] = {
+          student_id: l.studentId,
+          latitude: l.latitude,
+          longitude: l.longitude,
+          last_seen: l.lastSeen,
+          inside_radius: l.insideRadius
+        }
+      })
 
-    const locationsMap: Record<string, Location> = {}
-    locationsData?.forEach((l) => { locationsMap[l.student_id] = l })
+      const attendanceMap: Record<string, Attendance> = {}
+      data.attendance?.forEach((a: any) => {
+        attendanceMap[a.studentId] = {
+          student_id: a.studentId,
+          ip_address: a.ipAddress,
+          user_agent: a.userAgent,
+          joined_at: a.joinedAt,
+          status: a.status
+        }
+      })
 
-    const attendanceMap: Record<string, Attendance> = {}
-    attendanceData?.forEach((a) => { attendanceMap[a.student_id] = a })
-
-    setStudents(studentsMap)
-    setLocations(locationsMap)
-    setAttendanceRecords(attendanceMap)
+      setStudents(studentsMap)
+      setLocations(locationsMap)
+      setAttendanceRecords(attendanceMap)
+    } catch (err) {
+      console.error('Error loading session details:', err)
+    }
   }
 
   // 15-second offline check timer
@@ -236,13 +250,14 @@ export default function Dashboard() {
             prevOfflineState.current[studentId] = true
             const studentName = students[studentId]?.name || 'Student'
             
-            // Mark attendance record as Offline in database
-            supabase
-              .from('attendance')
-              .update({ status: 'Offline' })
-              .eq('session_id', activeSession.id)
-              .eq('student_id', studentId)
-              .then(() => {})
+            // Broadcast offline state change via WebSockets
+            if (socketRef.current) {
+              socketRef.current.emit('status-change', {
+                roomId: activeSession.id,
+                studentId,
+                status: 'offline'
+              })
+            }
 
             triggerAlert(`${studentName} has disconnected (connection lost)`, 'error')
             changed = true
@@ -254,104 +269,117 @@ export default function Dashboard() {
     }, 4000)
 
     return () => clearInterval(offlineCheckInterval)
-  }, [activeSession, students, supabase])
+  }, [activeSession, students])
 
-  // Real-time synchronization using Supabase Realtime Channel subscriptions
+  // Real-time synchronization using Socket.IO
   useEffect(() => {
     if (!activeSession) return
 
-    const channel = supabase
-      .channel(`session_${activeSession.id}`)
-      // 1. Subscribe to new students joining
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'students',
-          filter: `session_id=eq.${activeSession.id}`
-        },
-        (payload) => {
-          const newStudent = payload.new as Student
-          setStudents((prev) => ({ ...prev, [newStudent.id]: newStudent }))
-          triggerAlert(`${newStudent.name} joined the attendance session`, 'success')
-        }
-      )
-      // 2. Subscribe to attendance state changes
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'attendance',
-          filter: `session_id=eq.${activeSession.id}`
-        },
-        (payload) => {
-          const att = payload.new as Attendance
-          setAttendanceRecords((prev) => ({ ...prev, [att.student_id]: att }))
+    socketRef.current = io()
+    const socket = socketRef.current
 
-          if (payload.eventType === 'UPDATE') {
-            const studentName = students[att.student_id]?.name || 'Student'
-            // Trigger alert on reconnection
-            if (att.status === 'Active' && prevOfflineState.current[att.student_id]) {
-              prevOfflineState.current[att.student_id] = false
-              triggerAlert(`${studentName} reconnected`, 'success')
-            }
+    socket.emit('join-room', activeSession.id)
+
+    // 1. Listen to new students checking in
+    socket.on('student-joined', ({ student, attendance }: { student: any; attendance: any }) => {
+      setStudents((prev) => ({
+        ...prev,
+        [student.id]: {
+          id: student.id,
+          name: student.name,
+          roll_number: student.roll_number,
+          department: student.department,
+          created_at: student.created_at
+        }
+      }))
+      
+      setAttendanceRecords((prev) => ({
+        ...prev,
+        [attendance.studentId]: {
+          student_id: attendance.studentId,
+          ip_address: attendance.ipAddress || attendance.ip_address,
+          user_agent: attendance.userAgent || attendance.user_agent,
+          joined_at: attendance.joinedAt || attendance.joined_at,
+          status: attendance.status
+        }
+      }))
+
+      triggerAlert(`${student.name} joined the attendance session`, 'success')
+    })
+
+    // 2. Listen to student connection status changes
+    socket.on('status-change', ({ studentId, status }: { studentId: string; status: string }) => {
+      setAttendanceRecords((prev) => {
+        const current = prev[studentId]
+        if (!current) return prev
+        return {
+          ...prev,
+          [studentId]: {
+            ...current,
+            status: status === 'offline' ? 'Offline' : 'Active'
           }
         }
-      )
-      // 3. Subscribe to real-time student location heartbeats
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'locations',
-          filter: `session_id=eq.${activeSession.id}`
-        },
-        (payload) => {
-          const loc = payload.new as Location
-          setLocations((prev) => ({ ...prev, [loc.student_id]: loc }))
+      })
 
-          // Reset offline state since we got a heartbeat
-          prevOfflineState.current[loc.student_id] = false
-
-          // Check if boundary crossed
-          const prevInside = prevInsideState.current[loc.student_id]
-          const curInside = loc.inside_radius
-          const studentName = students[loc.student_id]?.name || 'Student'
-
-          if (prevInside !== undefined && prevInside !== curInside) {
-            if (!curInside) {
-              triggerAlert(`${studentName} left the classroom boundary!`, 'warning')
-            } else {
-              triggerAlert(`${studentName} returned inside the classroom boundary`, 'info')
-            }
+      // Update locations state status
+      setLocations((prev) => {
+        const current = prev[studentId]
+        if (!current) return prev
+        return {
+          ...prev,
+          [studentId]: {
+            ...current,
+            last_seen: new Date().toISOString()
           }
+        }
+      })
 
-          prevInsideState.current[loc.student_id] = curInside
+      const studentName = students[studentId]?.name || 'Student'
+      if (status === 'offline') {
+        prevOfflineState.current[studentId] = true
+        triggerAlert(`${studentName} disconnected (connection lost)`, 'error')
+      } else {
+        prevOfflineState.current[studentId] = false
+        triggerAlert(`${studentName} reconnected`, 'success')
+      }
+    })
+
+    // 3. Listen to real-time student location updates
+    socket.on('location-update', (loc: any) => {
+      setLocations((prev) => ({
+        ...prev,
+        [loc.student_id]: {
+          student_id: loc.student_id,
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          last_seen: loc.last_seen,
+          inside_radius: loc.inside_radius
         }
-      )
-      // 4. Subscribe to session changes (e.g. radius adjustments)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'sessions',
-          filter: `id=eq.${activeSession.id}`
-        },
-        (payload) => {
-          const updatedSession = payload.new as Session
-          setActiveSession(updatedSession)
+      }))
+
+      // Reset offline status
+      prevOfflineState.current[loc.student_id] = false
+
+      // Check if boundary crossed
+      const prevInside = prevInsideState.current[loc.student_id]
+      const curInside = loc.inside_radius
+      const studentName = students[loc.student_id]?.name || 'Student'
+
+      if (prevInside !== undefined && prevInside !== curInside) {
+        if (!curInside) {
+          triggerAlert(`${studentName} left the classroom boundary!`, 'warning')
+        } else {
+          triggerAlert(`${studentName} returned inside the classroom boundary`, 'info')
         }
-      )
-      .subscribe()
+      }
+
+      prevInsideState.current[loc.student_id] = curInside
+    })
 
     return () => {
-      supabase.removeChannel(channel)
+      socket.disconnect()
     }
-  }, [activeSession, students, supabase])
+  }, [activeSession, students])
 
   // Session Duration Countdown Timer
   useEffect(() => {
@@ -470,12 +498,12 @@ export default function Dashboard() {
     setLoading(true)
 
     try {
-      const res = await fetch('/api/session', {
+      const res = await fetch('/api/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          session_name: sessionNameInput.trim(),
-          classroom_name: classroomNameInput.trim(),
+          sessionName: sessionNameInput.trim(),
+          classroomName: classroomNameInput.trim(),
           radius: parseInt(radiusInput),
           latitude: classroomLat,
           longitude: classroomLng,
@@ -489,9 +517,20 @@ export default function Dashboard() {
         setFormError(data.error || 'Failed to create session')
         setLoading(false)
       } else {
-        setActiveSession(data.session)
-        setSessionsList((prev) => [data.session, ...prev])
-        setNewRadiusInput(data.session.radius.toString())
+        const normalizedSession = {
+          id: data.session.id,
+          session_name: data.session.sessionName,
+          classroom_name: data.session.classroomName,
+          radius: data.session.radius,
+          latitude: data.session.latitude,
+          longitude: data.session.longitude,
+          start_time: data.session.startTime,
+          end_time: data.session.endTime
+        }
+
+        setActiveSession(normalizedSession)
+        setSessionsList((prev) => [normalizedSession, ...prev])
+        setNewRadiusInput(normalizedSession.radius.toString())
         
         // Reset inputs
         setSessionNameInput('')
@@ -521,7 +560,7 @@ export default function Dashboard() {
     if (!activeSession || !newRadiusInput) return
 
     try {
-      const res = await fetch('/api/session', {
+      const res = await fetch('/api/sessions', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -532,7 +571,18 @@ export default function Dashboard() {
 
       const data = await res.json()
       if (res.ok) {
-        setActiveSession(data.session)
+        const normalizedSession = {
+          id: data.session.id,
+          session_name: data.session.sessionName,
+          classroom_name: data.session.classroomName,
+          radius: data.session.radius,
+          latitude: data.session.latitude,
+          longitude: data.session.longitude,
+          start_time: data.session.startTime,
+          end_time: data.session.endTime
+        }
+
+        setActiveSession(normalizedSession)
         setShowRadiusModal(false)
         triggerAlert(`Geofence radius adjusted to ${newRadiusInput}m`, 'success')
       } else {
@@ -552,7 +602,7 @@ export default function Dashboard() {
     }
 
     try {
-      const res = await fetch(`/api/session?id=${activeSession.id}`, {
+      const res = await fetch(`/api/sessions?id=${activeSession.id}`, {
         method: 'DELETE'
       })
 
@@ -574,7 +624,7 @@ export default function Dashboard() {
 
   // Sign out handler
   const handleSignOut = async () => {
-    await supabase.auth.signOut()
+    await fetch('/api/auth/logout', { method: 'POST' })
     router.push('/')
     router.refresh()
   }
