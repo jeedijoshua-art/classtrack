@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, use, Suspense, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Compass, ShieldAlert, ShieldCheck, MapPin, Radio, Bell, AlertTriangle } from 'lucide-react'
+import { Compass, ShieldAlert, ShieldCheck, MapPin, Radio, Bell, AlertTriangle, Sun, Moon } from 'lucide-react'
 import { io } from 'socket.io-client'
 
 interface Student {
@@ -28,6 +28,37 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Onboarding support
+  const [hasOnboarded, setHasOnboarded] = useState<boolean>(false)
+
+  // Theme support
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
+
+  useEffect(() => {
+    const savedOnboarding = localStorage.getItem('classtrack_onboarded_v2')
+    if (savedOnboarding === 'true') {
+      setHasOnboarded(true)
+    }
+
+    const savedTheme = localStorage.getItem('theme') as 'dark' | 'light' | null
+    if (savedTheme) {
+      setTheme(savedTheme)
+    } else {
+      localStorage.setItem('theme', 'dark')
+    }
+  }, [])
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark'
+    setTheme(nextTheme)
+    localStorage.setItem('theme', nextTheme)
+    if (nextTheme === 'light') {
+      document.documentElement.classList.remove('dark')
+    } else {
+      document.documentElement.classList.add('dark')
+    }
+  }
+
   // Tracking states
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [trackingStatus, setTrackingStatus] = useState<'prompting' | 'tracking' | 'error'>('prompting')
@@ -36,6 +67,11 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
   const [radius, setRadius] = useState<number | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [socketConnected, setSocketConnected] = useState(false)
+
+  // Location history ref for smoothing
+  const locationHistoryRef = useRef<{ lat: number; lng: number }[]>([])
+  const [accuracyIgnored, setAccuracyIgnored] = useState<boolean>(false)
+  const [lastIgnoredAccuracy, setLastIgnoredAccuracy] = useState<number | null>(null)
 
   // Diagnostics states
   const [isInsecureContext, setIsInsecureContext] = useState(false)
@@ -199,11 +235,34 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     console.log(`GPS SUCCESS\nlat: ${latitude}\nlng: ${longitude}`)
     logGeolocationStatus('SUCCESS_CALLBACK', `Lat: ${latitude}, Lng: ${longitude}, Acc: ${accuracy}m`)
 
-    setCoords({ lat: latitude, lng: longitude })
+    // Filter out low accuracy cell-tower or WiFi fallback updates (> 60m accuracy)
+    if (accuracy > 60) {
+      console.warn(`[GPS Jitter Filtered] Discarding reading with poor accuracy: ${accuracy}m (> 60m)`)
+      setLastIgnoredAccuracy(accuracy)
+      setAccuracyIgnored(true)
+      return
+    }
+    setAccuracyIgnored(false)
+
     setTrackingStatus('tracking')
     setGpsError(null) // Reset errors on successful location acquisition
     setError(null) // Clear any previous error states
     setPermissionState('granted') // Geolocation succeeded, so permission must be granted
+
+    // Add current position to sliding history
+    const history = [...locationHistoryRef.current, { lat: latitude, lng: longitude }]
+    if (history.length > 3) {
+      history.shift()
+    }
+    locationHistoryRef.current = history
+
+    // Calculate moving average
+    const avgLat = history.reduce((sum, c) => sum + c.lat, 0) / history.length
+    const avgLng = history.reduce((sum, c) => sum + c.lng, 0) / history.length
+
+    console.log(`GPS SMOOTHED\nlat: ${avgLat}\nlng: ${avgLng}`)
+
+    setCoords({ lat: avgLat, lng: avgLng })
 
     if (!currentStudent) {
       console.warn('[Geolocation Success Callback] Student identity not loaded yet. Ignoring POST heartbeat.')
@@ -218,8 +277,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
         body: JSON.stringify({
           studentId: currentStudent.id,
           sessionId: currentSessionId,
-          latitude,
-          longitude
+          latitude: avgLat,
+          longitude: avgLng
         })
       })
 
@@ -237,8 +296,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
             roomId: currentSessionId,
             location: {
               student_id: currentStudent.id,
-              latitude,
-              longitude,
+              latitude: avgLat,
+              longitude: avgLng,
               inside_radius: data.insideRadius,
               last_seen: new Date().toISOString()
             }
@@ -265,24 +324,35 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     logGeolocationStatus('ERROR_CALLBACK', `Code: ${error.code} (${codeString}), Message: ${error.message}`)
     setGpsError({ code: error.code, message: error.message, codeString })
 
+    let userFriendlyMessage = ''
     if (error.code === error.PERMISSION_DENIED) {
       setPermissionState('denied')
       setTrackingStatus('error')
-      setError(`Location access denied (Code: ${error.code} [${codeString}]). Message: ${error.message}. You must enable Location Permissions in your browser settings to log attendance. Make sure you access the site via HTTPS on mobile.`)
+      userFriendlyMessage = 'Location Permission Denied: ClassTrack was blocked from accessing your GPS. To proceed, please open your browser/device settings, allow location permissions for this website, and click Retry.'
+    } else if (error.code === error.POSITION_UNAVAILABLE) {
+      userFriendlyMessage = 'GPS Position Unavailable: Your device could not determine its location. Please verify that Location Services/GPS are enabled in your device system settings.'
+    } else if (error.code === error.TIMEOUT) {
+      userFriendlyMessage = 'GPS Request Timed Out: Acquiring satellite lock took too long. Try moving closer to a window or step outside for better signal, then click Retry.'
+    } else {
+      userFriendlyMessage = `GPS Tracking Error: ${error.message} (Code: ${error.code})`
+    }
+
+    if (error.code === error.PERMISSION_DENIED) {
+      setError(userFriendlyMessage)
     } else {
       // Handle POSITION_UNAVAILABLE or TIMEOUT: Increment retry counter and schedule retry
       setRetryCount((prev) => {
         const nextRetry = prev + 1
         if (nextRetry >= 5) {
           setTrackingStatus('error')
-          setError(`Failed to retrieve coordinates after multiple attempts. Please ensure your device GPS is enabled and has a clear sky view. Error: ${error.message}`)
+          setError(userFriendlyMessage)
         }
         return nextRetry
       })
       
       let errorHint = 'Retrying geolocation in 3 seconds...'
       if (error.code === error.POSITION_UNAVAILABLE) {
-        errorHint = 'GPS position unavailable. Please ensure GPS/Location services are enabled on your device. Retrying...'
+        errorHint = 'GPS position unavailable. Please ensure GPS is enabled. Retrying...'
       } else if (error.code === error.TIMEOUT) {
         errorHint = 'GPS request timed out. Retrying to establish lock...'
       }
@@ -293,7 +363,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
         clearTimeout(retryTimeoutRef.current)
       }
 
-      // Auto-retry after 3 seconds by restarting watchPosition cleanly instead of concurrent getCurrentPosition requests
+      // Auto-retry after 3 seconds by restarting watchPosition
       retryTimeoutRef.current = setTimeout(() => {
         if (trackingStatusRef.current !== 'error') {
           logGeolocationStatus('AUTO_RETRY_WATCH_RESTART', 'Restarting watchPosition for retry...')
@@ -301,11 +371,12 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
         }
       }, 3000)
     }
-  }, [logGeolocationStatus, handleSuccess])
+  }, [logGeolocationStatus])
 
   // 1. Socket.IO connection and reconnect handling
   useEffect(() => {
     if (!student || !sessionId) return
+    if (!hasOnboarded) return // Gate socket connection and triggers until onboarded
 
     // Socket.io initialization with auto-reconnection parameters
     socketRef.current = io({
@@ -433,6 +504,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
   // 3. Start geolocation tracking using watchPosition
   useEffect(() => {
     if (!student || !sessionId) return
+    if (!hasOnboarded) return // Gate GPS prompt until onboarded
 
     if (!('geolocation' in navigator)) {
       setTrackingStatus('error')
@@ -546,27 +618,27 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
 
   if (loading) {
     return (
-      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-zinc-950 font-sans">
+      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-ct-bg font-sans transition-colors duration-200">
         <div className="w-10 h-10 border-4 border-violet-500/20 border-t-violet-500 rounded-full animate-spin mb-4" />
-        <p className="text-zinc-400 text-sm">Identifying attendance profile...</p>
+        <p className="text-ct-muted text-sm">Identifying attendance profile...</p>
       </div>
     )
   }
 
   if (!student) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-zinc-950 font-sans p-4">
-        <div className="w-full max-w-md bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-8 text-center space-y-6 backdrop-blur-xl">
-          <div className="w-16 h-16 bg-red-950/30 border border-red-900/40 rounded-2xl flex items-center justify-center mx-auto text-red-400">
+      <div className="min-h-screen w-full flex items-center justify-center bg-ct-bg font-sans p-4 transition-colors duration-200">
+        <div className="w-full max-w-md bg-ct-card border border-ct-border rounded-2xl p-8 text-center space-y-6 backdrop-blur-xl">
+          <div className="w-16 h-16 bg-red-950/20 border border-red-900/30 rounded-2xl flex items-center justify-center mx-auto text-red-400">
             <ShieldAlert className="w-8 h-8" />
           </div>
           <div className="space-y-2">
-            <h3 className="text-xl font-bold text-white">Identity Error</h3>
-            <p className="text-zinc-400 text-sm">{error || 'Student identity not found. Please scan the QR code to sign in again.'}</p>
+            <h3 className="text-xl font-bold text-ct-text">Identity Error</h3>
+            <p className="text-ct-muted text-sm">{error || 'Student identity not found. Please scan the QR code to sign in again.'}</p>
           </div>
           <button
             onClick={() => window.location.reload()}
-            className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-bold transition-all text-sm cursor-pointer"
+            className="w-full py-3 bg-ct-card-solid hover:bg-ct-card text-ct-text border border-ct-border rounded-xl font-bold transition-all text-sm cursor-pointer"
           >
             Retry Identity Access
           </button>
@@ -575,8 +647,100 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     )
   }
 
+  if (!hasOnboarded) {
+    return (
+      <div className="relative min-h-screen w-full flex items-center justify-center bg-ct-bg font-sans overflow-hidden py-12 px-4 sm:px-6 lg:px-8 transition-colors duration-200">
+        {/* Floating Theme Switcher */}
+        <div className="absolute top-4 right-4 z-50">
+          <button
+            onClick={toggleTheme}
+            className="p-2.5 bg-ct-card hover:bg-ct-card-solid text-ct-muted hover:text-ct-text rounded-xl transition-colors cursor-pointer border border-ct-border shadow-sm flex items-center justify-center"
+            title={theme === 'dark' ? 'Activate Light Mode' : 'Activate Dark Mode'}
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+        </div>
+
+        {/* Background blobs */}
+        <div className="absolute top-[-20%] left-[-20%] w-[600px] h-[600px] rounded-full bg-violet-900/10 blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-[-20%] right-[-20%] w-[600px] h-[600px] rounded-full bg-indigo-900/10 blur-[120px] pointer-events-none" />
+
+        <div className="w-full max-w-md space-y-8 relative z-10 animate-in fade-in zoom-in-95 duration-300">
+          <div className="flex flex-col items-center text-center">
+            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-violet-900/10 border border-violet-500/20 text-violet-400 mb-4 shadow-inner">
+              <Compass className="w-6 h-6 animate-pulse" />
+            </div>
+            <h2 className="text-3xl font-extrabold text-ct-text tracking-tight">
+              ClassTrack GPS
+            </h2>
+            <p className="mt-2 text-sm text-ct-muted font-medium">
+              Location Verification Onboarding
+            </p>
+          </div>
+
+          <div className="bg-ct-card backdrop-blur-xl border border-ct-border rounded-2xl shadow-2xl p-6 sm:p-8 space-y-6">
+            <div className="space-y-4 text-left">
+              <h3 className="text-sm font-bold text-ct-text uppercase tracking-wider text-center border-b border-ct-border pb-3">Why location is required</h3>
+              <p className="text-ct-muted text-xs leading-relaxed text-center">
+                ClassTrack uses your device's GPS to verify your attendance based on your classroom's geographic boundary.
+              </p>
+
+              <div className="space-y-3.5 pt-2">
+                <div className="flex gap-3 items-start">
+                  <div className="w-6 h-6 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400 flex-shrink-0 text-xs font-bold mt-0.5">1</div>
+                  <div>
+                    <h4 className="font-semibold text-xs text-ct-text">Attendance Verification</h4>
+                    <p className="text-[11px] text-ct-muted leading-relaxed">Verifies that you are physically present in the classroom to sign your attendance record.</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 items-start">
+                  <div className="w-6 h-6 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400 flex-shrink-0 text-xs font-bold mt-0.5">2</div>
+                  <div>
+                    <h4 className="font-semibold text-xs text-ct-text">Geofence Monitoring</h4>
+                    <p className="text-[11px] text-ct-muted leading-relaxed">Actively measures your distance to class during the session to guarantee continuous engagement.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-violet-500/5 border border-violet-500/10 rounded-xl space-y-1 mt-4">
+                <h5 className="font-semibold text-xs text-violet-400 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5" /> Privacy Notice
+                </h5>
+                <p className="text-[10px] text-ct-muted leading-normal">
+                  Your coordinates are only measured and transmitted while the tracking session tab is kept open. No background history or non-class tracking occurs. Coordinates are stored securely.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                localStorage.setItem('classtrack_onboarded_v2', 'true')
+                setHasOnboarded(true)
+              }}
+              className="w-full py-3.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl font-bold shadow-lg shadow-violet-500/10 transition-all text-xs cursor-pointer uppercase tracking-wider text-center"
+            >
+              Continue & Request GPS Permission
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="relative min-h-screen w-full flex items-center justify-center bg-zinc-950 font-sans overflow-hidden py-12 px-4 sm:px-6 lg:px-8">
+    <div className="relative min-h-screen w-full flex items-center justify-center bg-ct-bg font-sans overflow-hidden py-12 px-4 sm:px-6 lg:px-8 transition-colors duration-200">
+      {/* Floating Theme Switcher */}
+      <div className="absolute top-4 right-4 z-50">
+        <button
+          onClick={toggleTheme}
+          className="p-2.5 bg-ct-card hover:bg-ct-card-solid text-ct-muted hover:text-ct-text rounded-xl transition-colors cursor-pointer border border-ct-border shadow-sm flex items-center justify-center"
+          title={theme === 'dark' ? 'Activate Light Mode' : 'Activate Dark Mode'}
+        >
+          {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+        </button>
+      </div>
+
       {/* In-App Toast Banner */}
       {inAppNotification && (
         <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[2000] flex items-center gap-2.5 px-4 py-3 rounded-xl border backdrop-blur-md shadow-xl text-xs font-semibold animate-in fade-in slide-in-from-top duration-200 ${
@@ -599,29 +763,29 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
 
       <div className="w-full max-w-md space-y-8 relative z-10">
         <div className="flex flex-col items-center text-center">
-          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-zinc-900/80 border border-zinc-800 text-zinc-400 text-xs font-medium mb-4">
+          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-ct-card border border-ct-border text-ct-muted text-xs font-medium mb-4">
             <Radio className={`w-3.5 h-3.5 ${insideRadius !== null ? 'text-violet-400 animate-ping' : ''}`} />
             Live Attendance Session Active
           </div>
-          <h2 className="text-3xl font-extrabold text-white tracking-tight">
+          <h2 className="text-3xl font-extrabold text-ct-text tracking-tight">
             ClassTrack Tracker
           </h2>
-          <p className="mt-1.5 text-zinc-400 text-sm">
+          <p className="mt-1.5 text-ct-muted text-sm">
             Keep this tab open on your device to maintain your attendance
           </p>
         </div>
 
         {/* Status Card */}
-        <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-800/80 rounded-2xl shadow-2xl p-8 space-y-6">
+        <div className="bg-ct-card backdrop-blur-xl border border-ct-border rounded-2xl shadow-2xl p-6 sm:p-8 space-y-6">
           
           {/* Geofence Status Indicator */}
           {isInsecureContext && (
-            <div className="flex flex-col gap-2 p-4 rounded-xl bg-red-950/30 border border-red-900/40 text-red-200 text-xs text-left">
+            <div className="flex flex-col gap-2 p-4 rounded-xl bg-red-950/20 border border-red-900/30 text-red-200 text-xs text-left">
               <div className="flex items-center gap-2 font-bold text-red-400">
                 <ShieldAlert className="w-4 h-4 flex-shrink-0" />
                 <span>Insecure Connection Warning</span>
               </div>
-              <p className="text-zinc-300 leading-relaxed font-sans">
+              <p className="text-ct-muted leading-relaxed font-sans">
                 Mobile web browsers block Geolocation on plain HTTP. Please access this page over **HTTPS**, or check the diagnostics panel below on how to register your IP address as secure.
               </p>
             </div>
@@ -629,17 +793,17 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
 
           {trackingStatus === 'error' && error ? (
             <div className="flex flex-col items-center py-6 text-center space-y-4">
-              <div className="w-16 h-16 rounded-2xl bg-red-950/30 border border-red-900/40 flex items-center justify-center text-red-400 mx-auto">
+              <div className="w-16 h-16 rounded-2xl bg-red-950/20 border border-red-900/30 flex items-center justify-center text-red-400 mx-auto">
                 <ShieldAlert className="w-8 h-8" />
               </div>
               <div className="space-y-3 w-full">
                 <div className="space-y-1">
                   <h3 className="text-lg font-bold text-red-500">Tracking Stopped</h3>
-                  <p className="text-zinc-300 text-xs px-2 leading-relaxed font-sans">{error}</p>
+                  <p className="text-ct-muted text-xs px-2 leading-relaxed font-sans">{error}</p>
                 </div>
                 <button
                   onClick={handleRetry}
-                  className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-bold transition-all text-xs cursor-pointer"
+                  className="w-full py-2.5 bg-ct-card-solid hover:bg-ct-card text-ct-text border border-ct-border rounded-xl font-bold transition-all text-xs cursor-pointer"
                 >
                   Retry Location Access
                 </button>
@@ -647,32 +811,32 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
             </div>
           ) : insideRadius === null ? (
             <div className="flex flex-col items-center py-6 text-center space-y-4">
-              <div className="w-16 h-16 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-center text-zinc-500 animate-pulse">
+              <div className="w-16 h-16 rounded-2xl bg-ct-bg border border-ct-border flex items-center justify-center text-ct-muted animate-pulse">
                 <Compass className="w-8 h-8 rotate-45" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white">Acquiring Location</h3>
-                <p className="text-zinc-500 text-xs mt-1">Please allow browser location permissions if prompted.</p>
+                <h3 className="text-lg font-bold text-ct-text">Acquiring Location</h3>
+                <p className="text-ct-muted text-xs mt-1">Please allow browser location permissions if prompted.</p>
               </div>
             </div>
           ) : insideRadius ? (
             <div className="flex flex-col items-center py-6 text-center space-y-4">
-              <div className="w-16 h-16 rounded-2xl bg-emerald-950/30 border border-emerald-900/50 flex items-center justify-center text-emerald-400">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
                 <ShieldCheck className="w-9 h-9" />
               </div>
               <div className="space-y-1">
                 <h3 className="text-xl font-bold text-emerald-400">Inside Classroom</h3>
-                <p className="text-zinc-400 text-sm">Attendance status: <span className="text-emerald-400 font-semibold">Verified Active</span></p>
+                <p className="text-ct-muted text-sm">Attendance status: <span className="text-emerald-400 font-semibold">Verified Active</span></p>
               </div>
             </div>
           ) : (
             <div className="flex flex-col items-center py-6 text-center space-y-4">
-              <div className="w-16 h-16 rounded-2xl bg-red-950/40 border border-red-900/50 flex items-center justify-center text-red-400 animate-bounce">
+              <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 animate-bounce">
                 <AlertTriangle className="w-9 h-9" />
               </div>
               <div className="space-y-2">
                 <h3 className="text-xl font-bold text-red-500">Outside Classroom</h3>
-                <p className="text-zinc-300 text-sm font-medium">
+                <p className="text-ct-text text-sm font-medium">
                   You are outside the classroom boundary. Please return.
                 </p>
               </div>
@@ -680,40 +844,40 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
           )}
 
           {/* Student Profile & Stats */}
-          <div className="border-t border-zinc-800/80 pt-6 space-y-4">
+          <div className="border-t border-ct-border pt-6 space-y-4">
             <div className="grid grid-cols-2 gap-4 text-sm">
-              <div className="bg-zinc-950/40 border border-zinc-800/50 rounded-xl p-3">
-                <span className="text-xs text-zinc-500 block">Student Name</span>
-                <span className="text-white font-medium block truncate mt-0.5">{student?.name}</span>
+              <div className="bg-ct-bg/60 border border-ct-border rounded-xl p-3">
+                <span className="text-xs text-ct-muted block">Student Name</span>
+                <span className="text-ct-text font-medium block truncate mt-0.5">{student?.name}</span>
               </div>
-              <div className="bg-zinc-950/40 border border-zinc-800/50 rounded-xl p-3">
-                <span className="text-xs text-zinc-500 block">Roll / Student ID</span>
-                <span className="text-white font-medium block truncate mt-0.5">{student?.rollNumber}</span>
+              <div className="bg-ct-bg/60 border border-ct-border rounded-xl p-3">
+                <span className="text-xs text-ct-muted block">Roll / Student ID</span>
+                <span className="text-ct-text font-medium block truncate mt-0.5">{student?.rollNumber}</span>
               </div>
             </div>
 
             {insideRadius !== null && (
-              <div className="bg-zinc-950/40 border border-zinc-800/50 rounded-xl p-4 space-y-3">
-                <div className="flex justify-between items-center text-xs text-zinc-400">
+              <div className="bg-ct-bg/60 border border-ct-border rounded-xl p-4 space-y-3 text-left">
+                <div className="flex justify-between items-center text-xs text-ct-muted">
                   <span>Classroom Radius</span>
-                  <span className="text-white font-semibold">{radius} meters</span>
+                  <span className="text-ct-text font-semibold">{radius} meters</span>
                 </div>
-                <div className="flex justify-between items-center text-xs text-zinc-400">
+                <div className="flex justify-between items-center text-xs text-ct-muted">
                   <span>Current Distance</span>
                   <span className={`font-semibold ${insideRadius ? 'text-emerald-400' : 'text-red-400'}`}>
                     {distance === null ? '--' : `${distance} meters`}
                   </span>
                 </div>
                 {coords && (
-                  <div className="flex justify-between items-center text-xs text-zinc-500 border-t border-zinc-800/50 pt-2.5">
+                  <div className="flex justify-between items-center text-xs text-ct-muted border-t border-ct-border pt-2.5">
                     <span>Coordinates</span>
-                    <span className="font-mono text-[10px]">
+                    <span className="font-mono text-[10px] text-ct-text">
                       {coords.lat.toFixed(6)}, {coords.lng.toFixed(6)}
                     </span>
                   </div>
                 )}
                 {lastUpdated && (
-                  <div className="text-[10px] text-center text-zinc-600 mt-1">
+                  <div className="text-[10px] text-center text-ct-muted mt-1">
                     Last check-in heartbeat: {lastUpdated.toLocaleTimeString()}
                   </div>
                 )}
@@ -721,28 +885,28 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
             )}
 
             {/* Environment-agnostic network connection details for student devices */}
-            <div className="bg-zinc-950/40 border border-zinc-800/50 rounded-xl p-4 space-y-2.5">
-              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-zinc-400 border-b border-zinc-800/50 pb-2">
+            <div className="bg-ct-bg/60 border border-ct-border rounded-xl p-4 space-y-2.5 text-left">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-ct-muted border-b border-ct-border pb-2">
                 <span>Network Status</span>
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 ${
                   socketConnected 
-                    ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-900/30' 
-                    : 'bg-rose-950/60 text-rose-400 border border-rose-900/30'
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                    : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                 }`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${socketConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
                   {socketConnected ? 'Connected' : 'Disconnected'}
                 </span>
               </div>
-              <div className="text-[10px] space-y-1.5 text-zinc-400">
+              <div className="text-[10px] space-y-1.5 text-ct-muted">
                 <div className="flex justify-between items-center">
                   <span>Server Host:</span>
-                  <span className="font-mono text-white font-semibold">
+                  <span className="font-mono text-ct-text font-semibold">
                     {typeof window !== 'undefined' ? window.location.hostname : 'Detecting...'}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span>Port:</span>
-                  <span className="font-mono text-white font-semibold">
+                  <span className="font-mono text-ct-text font-semibold">
                     {typeof window !== 'undefined' ? (window.location.port || (window.location.protocol === 'https:' ? '443' : '80')) : '...'}
                   </span>
                 </div>
@@ -759,8 +923,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
           </div>
 
           {/* Always Visible Diagnostics Debug Panel */}
-          <div className="bg-zinc-950/60 border border-zinc-800/80 rounded-xl p-4 mt-4 space-y-3 text-[11px] text-zinc-400 text-left font-mono">
-            <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider text-zinc-400 border-b border-zinc-800/50 pb-2 mb-1 font-sans">
+          <div className="bg-ct-bg/75 border border-ct-border rounded-xl p-4 mt-4 space-y-3 text-[11px] text-ct-muted text-left font-mono">
+            <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider text-ct-muted border-b border-ct-border pb-2 mb-1 font-sans">
               <span>GPS & Geolocation Debug</span>
               <span className="text-emerald-400 text-[10px] animate-pulse">● Active Debug</span>
             </div>
@@ -778,48 +942,55 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
 
               <div className="flex justify-between">
                 <span>GPS Status:</span>
-                <span className={gpsError ? 'text-rose-400 font-bold' : coords ? 'text-emerald-400' : 'text-zinc-500'}>
+                <span className={gpsError ? 'text-rose-400 font-bold' : coords ? 'text-emerald-400' : 'text-ct-muted'}>
                   {gpsError ? `ERROR (${gpsError.codeString})` : coords ? 'ACTIVE_TRACKING' : 'ACQUIRING'}
                 </span>
               </div>
 
               <div className="flex justify-between">
                 <span>Latitude:</span>
-                <span className="text-white font-semibold">
+                <span className="text-ct-text font-semibold">
                   {coords ? coords.lat.toFixed(6) : 'N/A'}
                 </span>
               </div>
 
               <div className="flex justify-between">
                 <span>Longitude:</span>
-                <span className="text-white font-semibold">
+                <span className="text-ct-text font-semibold">
                   {coords ? coords.lng.toFixed(6) : 'N/A'}
                 </span>
               </div>
 
               <div className="flex justify-between">
+                <span>Accuracy Filtered:</span>
+                <span className={accuracyIgnored ? 'text-amber-400 font-bold' : 'text-ct-muted'}>
+                  {accuracyIgnored ? `YES (${lastIgnoredAccuracy?.toFixed(1)}m > 60m)` : 'NO'}
+                </span>
+              </div>
+
+              <div className="flex justify-between font-bold">
                 <span>Last Update Time:</span>
-                <span className="text-white font-semibold">
+                <span className="text-ct-text">
                   {lastUpdated ? lastUpdated.toLocaleTimeString() : 'N/A'}
                 </span>
               </div>
 
               <div className="flex justify-between">
                 <span>Error Code:</span>
-                <span className={gpsError ? 'text-rose-400 font-bold' : 'text-white'}>
+                <span className={gpsError ? 'text-rose-400 font-bold' : 'text-ct-text'}>
                   {gpsError ? gpsError.code : 'NONE'}
                 </span>
               </div>
 
-              <div className="flex justify-between border-b border-zinc-800/50 pb-2 mb-1">
+              <div className="flex justify-between border-b border-ct-border pb-2 mb-1">
                 <span>Error Message:</span>
-                <span className="text-white truncate max-w-[200px]" title={gpsError ? gpsError.message : 'NONE'}>
+                <span className="text-ct-text truncate max-w-[200px]" title={gpsError ? gpsError.message : 'NONE'}>
                   {gpsError ? gpsError.message : 'NONE'}
                 </span>
               </div>
 
               {/* Extra device context details */}
-              <div className="text-[10px] space-y-1 text-zinc-500 pt-1">
+              <div className="text-[10px] space-y-1 text-ct-muted pt-1">
                 <div className="flex justify-between">
                   <span>Secure Context:</span>
                   <span>{isInsecureContext ? 'NO (HTTP)' : 'YES'}</span>
@@ -839,10 +1010,10 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
               </div>
 
               {gpsError && isInsecureContext && (
-                <div className="bg-rose-950/20 border border-rose-900/40 rounded p-2 text-[10px] text-rose-300 font-sans space-y-1 mt-1">
+                <div className="bg-rose-500/10 border border-rose-500/20 rounded p-2 text-[10px] text-rose-300 font-sans space-y-1 mt-1">
                   <div className="font-bold text-rose-400">⚠️ Insecure Context Bypass Guidelines:</div>
                   <div className="leading-relaxed border-t border-rose-900/20 pt-1 mt-1">
-                    • **Android/Chrome:** Visit <code className="bg-zinc-900 px-1 py-0.5 rounded text-white select-all">chrome://flags/#unsafely-treat-insecure-origin-as-secure</code>, enable, enter <code className="bg-zinc-900 px-1 py-0.5 rounded text-white select-all">{currentUrl.split('/track')[0]}</code>, and relaunch Chrome.
+                    • **Android/Chrome:** Visit <code className="bg-ct-bg px-1 py-0.5 rounded text-ct-text select-all font-mono">chrome://flags/#unsafely-treat-insecure-origin-as-secure</code>, enable, enter <code className="bg-ct-bg px-1 py-0.5 rounded text-ct-text select-all font-mono">{currentUrl.split('/track')[0]}</code>, and relaunch Chrome.
                   </div>
                   <div className="leading-relaxed">
                     • **iPhone/Safari:** iOS Safari blocks HTTP geolocation. You must run the dev server via HTTPS using an HTTPS tunnel (e.g. ngrok) or proxy.
@@ -873,7 +1044,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
                     geoOptions
                   )
                 }}
-                className="flex-1 py-1.5 px-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded text-[10px] text-center font-bold cursor-pointer transition-colors"
+                className="flex-1 py-1.5 px-2 bg-ct-card-solid hover:bg-ct-card text-ct-text border border-ct-border rounded text-[10px] text-center font-bold cursor-pointer transition-colors"
               >
                 Force GPS Ping
               </button>
@@ -884,7 +1055,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
                     router.push(`/join/${sessionId}`)
                   }
                 }}
-                className="py-1.5 px-2 bg-red-950/20 hover:bg-red-950/40 text-red-400 border border-red-900/30 rounded text-[10px] text-center font-bold cursor-pointer transition-colors"
+                className="py-1.5 px-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded text-[10px] text-center font-bold cursor-pointer transition-colors"
               >
                 Reset Profile
               </button>
@@ -895,7 +1066,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
           {'Notification' in window && notificationPermission !== 'granted' && (
             <button
               onClick={requestNotificationPermission}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-zinc-950 hover:bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-300 hover:text-white transition-colors text-xs font-semibold cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 py-3 bg-ct-bg hover:bg-ct-card-solid border border-ct-border rounded-xl text-ct-muted hover:text-ct-text transition-colors text-xs font-semibold cursor-pointer shadow-sm"
             >
               <Bell className="w-4 h-4 text-violet-400" />
               Enable Push Notifications for Boundary Alerts
@@ -910,9 +1081,9 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
 export default function StudentTrack({ params }: { params: Promise<{ sessionId: string }> }) {
   return (
     <Suspense fallback={
-      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-zinc-950 font-sans">
+      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-ct-bg font-sans transition-colors duration-200">
         <div className="w-10 h-10 border-4 border-violet-500/20 border-t-violet-500 rounded-full animate-spin mb-4" />
-        <p className="text-zinc-400 text-sm">Initializing Geofence Tracker...</p>
+        <p className="text-ct-muted text-sm">Initializing Geofence Tracker...</p>
       </div>
     }>
       <StudentTrackContent params={params} />

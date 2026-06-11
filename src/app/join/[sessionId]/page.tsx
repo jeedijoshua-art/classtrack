@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
-import { MapPin, User, Hash, GraduationCap, ShieldAlert, CheckCircle } from 'lucide-react'
+import { MapPin, User, Hash, GraduationCap, ShieldAlert, CheckCircle, Sun, Moon } from 'lucide-react'
 
 interface SessionInfo {
   id: string
@@ -14,6 +14,29 @@ interface SessionInfo {
 export default function StudentJoin({ params }: { params: Promise<{ sessionId: string }> }) {
   const router = useRouter()
   const { sessionId } = use(params)
+
+  // Theme support
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
+
+  useEffect(() => {
+    const saved = localStorage.getItem('theme') as 'dark' | 'light' | null
+    if (saved) {
+      setTheme(saved)
+    } else {
+      localStorage.setItem('theme', 'dark')
+    }
+  }, [])
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark'
+    setTheme(nextTheme)
+    localStorage.setItem('theme', nextTheme)
+    if (nextTheme === 'light') {
+      document.documentElement.classList.remove('dark')
+    } else {
+      document.documentElement.classList.add('dark')
+    }
+  }
 
   // Session state
   const [session, setSession] = useState<SessionInfo | null>(null)
@@ -119,25 +142,25 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
 
   if (loadingSession) {
     return (
-      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-zinc-950 font-sans">
+      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-ct-bg font-sans transition-colors duration-200">
         <div className="w-10 h-10 border-4 border-violet-500/20 border-t-violet-500 rounded-full animate-spin mb-4" />
-        <p className="text-zinc-400 text-sm">Validating classroom session...</p>
+        <p className="text-ct-muted text-sm animate-pulse">Validating classroom session...</p>
       </div>
     )
   }
 
   if (sessionError) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-zinc-950 font-sans p-4">
-        <div className="w-full max-w-md bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-8 text-center space-y-6 backdrop-blur-xl">
-          <div className="w-16 h-16 bg-red-950/30 border border-red-900/40 rounded-2xl flex items-center justify-center mx-auto text-red-400">
+      <div className="min-h-screen w-full flex items-center justify-center bg-ct-bg font-sans p-4 transition-colors duration-200">
+        <div className="w-full max-w-md bg-ct-card border border-ct-border rounded-2xl p-8 text-center space-y-6 backdrop-blur-xl">
+          <div className="w-16 h-16 bg-red-950/20 border border-red-900/30 rounded-2xl flex items-center justify-center mx-auto text-red-400">
             <ShieldAlert className="w-8 h-8" />
           </div>
           <div className="space-y-2">
-            <h3 className="text-xl font-bold text-white">Session Unavaliable</h3>
-            <p className="text-zinc-400 text-sm">{sessionError}</p>
+            <h3 className="text-xl font-bold text-ct-text animate-pulse">Session Unavailable</h3>
+            <p className="text-ct-muted text-sm">{sessionError}</p>
           </div>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-ct-muted">
             Please ask your instructor for a valid QR code or link.
           </p>
         </div>
@@ -146,52 +169,63 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
   }
 
   return (
-    <div className="relative min-h-screen w-full flex items-center justify-center bg-zinc-950 font-sans overflow-hidden py-12 px-4 sm:px-6 lg:px-8">
+    <div className="relative min-h-screen w-full flex items-center justify-center bg-ct-bg font-sans overflow-hidden py-12 px-4 sm:px-6 lg:px-8 transition-colors duration-200">
+      {/* Floating Theme Switcher */}
+      <div className="absolute top-4 right-4 z-50">
+        <button
+          onClick={toggleTheme}
+          className="p-2.5 bg-ct-card hover:bg-ct-card-solid text-ct-muted hover:text-ct-text rounded-xl transition-colors cursor-pointer border border-ct-border shadow-sm flex items-center justify-center"
+          title={theme === 'dark' ? 'Activate Light Mode' : 'Activate Dark Mode'}
+        >
+          {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+        </button>
+      </div>
+
       {/* Background blobs */}
       <div className="absolute top-[-20%] left-[-20%] w-[600px] h-[600px] rounded-full bg-violet-900/10 blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-20%] right-[-20%] w-[600px] h-[600px] rounded-full bg-indigo-900/10 blur-[120px] pointer-events-none" />
 
       <div className="w-full max-w-md space-y-8 relative z-10">
-        <div className="flex flex-col items-center text-center">
-          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-violet-950 border border-violet-800 text-violet-400 mb-4">
-            <MapPin className="w-6 h-6" />
+        <div className="flex flex-col items-center text-center animate-in fade-in slide-in-from-top duration-300">
+          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-violet-900/10 border border-violet-500/20 text-violet-400 mb-4 shadow-inner">
+            <MapPin className="w-6 h-6 animate-pulse" />
           </div>
-          <h2 className="text-3xl font-extrabold text-white tracking-tight">
+          <h2 className="text-3xl font-extrabold text-ct-text tracking-tight">
             Check In to Class
           </h2>
-          <p className="mt-2 text-sm text-zinc-400">
-            Session: <span className="text-violet-400 font-semibold">{session?.sessionName}</span> in{' '}
-            <span className="text-violet-400 font-semibold">{session?.classroomName}</span>
+          <p className="mt-2 text-sm text-ct-muted">
+            Session: <span className="text-violet-500 font-semibold">{session?.sessionName}</span> in{' '}
+            <span className="text-violet-500 font-semibold">{session?.classroomName}</span>
           </p>
         </div>
 
-        <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-800/80 rounded-2xl shadow-2xl p-8 space-y-6">
+        <div className="bg-ct-card backdrop-blur-xl border border-ct-border rounded-2xl shadow-2xl p-6 sm:p-8 space-y-6 animate-in fade-in slide-in-from-bottom duration-300">
           {success ? (
             <div className="text-center py-8 space-y-4">
-              <div className="w-16 h-16 bg-emerald-950/30 border border-emerald-900/50 rounded-full flex items-center justify-center mx-auto text-emerald-400 animate-bounce">
+              <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/20 rounded-full flex items-center justify-center mx-auto text-emerald-400 animate-bounce">
                 <CheckCircle className="w-10 h-10" />
               </div>
               <div>
-                <h4 className="text-lg font-bold text-white">Attendance Logged!</h4>
-                <p className="text-zinc-400 text-sm mt-1">Starting live location tracking...</p>
+                <h4 className="text-lg font-bold text-ct-text">Attendance Logged!</h4>
+                <p className="text-ct-muted text-sm mt-1">Starting live location tracking...</p>
               </div>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
               {submitError && (
-                <div className="flex items-center gap-3 p-4 rounded-xl bg-red-950/30 border border-red-900/50 text-red-200 text-sm">
+                <div className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-200 text-sm">
                   <ShieldAlert className="w-5 h-5 flex-shrink-0 text-red-400" />
-                  <span>{submitError}</span>
+                  <span className="text-ct-text">{submitError}</span>
                 </div>
               )}
 
               <div className="space-y-4">
                 <div>
-                  <label htmlFor="name" className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
+                  <label htmlFor="name" className="block text-xs font-semibold uppercase tracking-wider text-ct-muted mb-2">
                     Student Full Name
                   </label>
                   <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-500">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-ct-muted">
                       <User className="w-5 h-5" />
                     </span>
                     <input
@@ -200,18 +234,18 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
                       required
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      className="block w-full pl-10 pr-3 py-3 bg-zinc-950/60 border border-zinc-800 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500 transition-all text-sm"
+                      className="block w-full pl-10 pr-3 py-3 bg-ct-input border border-ct-border rounded-xl text-ct-text placeholder-ct-muted/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 transition-all text-sm font-medium"
                       placeholder="e.g. Joshua Jeedi"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label htmlFor="roll" className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
+                  <label htmlFor="roll" className="block text-xs font-semibold uppercase tracking-wider text-ct-muted mb-2">
                     Roll / Student Number
                   </label>
                   <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-500">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-ct-muted">
                       <Hash className="w-5 h-5" />
                     </span>
                     <input
@@ -220,18 +254,18 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
                       required
                       value={rollNumber}
                       onChange={(e) => setRollNumber(e.target.value)}
-                      className="block w-full pl-10 pr-3 py-3 bg-zinc-950/60 border border-zinc-800 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500 transition-all text-sm"
+                      className="block w-full pl-10 pr-3 py-3 bg-ct-input border border-ct-border rounded-xl text-ct-text placeholder-ct-muted/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 transition-all text-sm font-medium"
                       placeholder="e.g. 101"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label htmlFor="dept" className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
+                  <label htmlFor="dept" className="block text-xs font-semibold uppercase tracking-wider text-ct-muted mb-2">
                     Department
                   </label>
                   <div className="relative">
-                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-500">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-ct-muted">
                       <GraduationCap className="w-5 h-5" />
                     </span>
                     <input
@@ -240,7 +274,7 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
                       required
                       value={department}
                       onChange={(e) => setDepartment(e.target.value)}
-                      className="block w-full pl-10 pr-3 py-3 bg-zinc-950/60 border border-zinc-800 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500 transition-all text-sm"
+                      className="block w-full pl-10 pr-3 py-3 bg-ct-input border border-ct-border rounded-xl text-ct-text placeholder-ct-muted/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 transition-all text-sm font-medium"
                       placeholder="e.g. Computer Science"
                     />
                   </div>
@@ -264,14 +298,16 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
           )}
           
           {/* Network connection details for student devices */}
-          <div className="bg-zinc-950/40 border border-zinc-800/50 rounded-xl p-4 mt-4 space-y-2 text-[10px] text-zinc-400">
-            <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider text-zinc-400 border-b border-zinc-800/50 pb-2 mb-1">
+          <div className="bg-ct-bg/60 border border-ct-border rounded-xl p-4 mt-4 space-y-2 text-[10px] text-ct-muted">
+            <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider text-ct-muted border-b border-ct-border pb-2 mb-1">
               <span>Network Status</span>
-              <span className="text-emerald-400 font-bold">🟢 Online</span>
+              <span className="text-emerald-400 font-bold flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse" /> Online
+              </span>
             </div>
             <div className="flex justify-between">
               <span>Server Host:</span>
-              <span className="font-mono text-white font-semibold">
+              <span className="font-mono text-ct-text font-semibold">
                 {typeof window !== 'undefined' ? window.location.host : 'Detecting...'}
               </span>
             </div>

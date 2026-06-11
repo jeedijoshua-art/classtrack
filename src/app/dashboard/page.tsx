@@ -25,7 +25,9 @@ import {
   VolumeX,
   Search,
   Activity,
-  Download
+  Download,
+  Sun,
+  Moon
 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import QRCode from 'qrcode'
@@ -96,6 +98,27 @@ interface ToastNotification {
 export default function Dashboard() {
   const router = useRouter()
   const socketRef = useRef<any>(null)
+
+  // Theme support state
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
+
+  useEffect(() => {
+    const saved = localStorage.getItem('theme') as 'dark' | 'light' | null
+    if (saved) {
+      setTheme(saved)
+      document.documentElement.classList.toggle('dark', saved === 'dark')
+    } else {
+      localStorage.setItem('theme', 'dark')
+      document.documentElement.classList.add('dark')
+    }
+  }, [])
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark'
+    setTheme(nextTheme)
+    localStorage.setItem('theme', nextTheme)
+    document.documentElement.classList.toggle('dark', nextTheme === 'dark')
+  }
 
   // Teacher Profile
   const [teacher, setTeacher] = useState<{ name: string; email: string } | null>(null)
@@ -909,94 +932,103 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-zinc-950 font-sans">
+      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-ct-bg text-ct-text font-sans">
         <div className="w-10 h-10 border-4 border-violet-500/20 border-t-violet-500 rounded-full animate-spin mb-4" />
-        <p className="text-zinc-400 text-sm">Synchronizing dashboard access...</p>
+        <p className="text-ct-muted text-sm">Synchronizing dashboard access...</p>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col h-screen w-full bg-zinc-950 text-white font-sans overflow-hidden">
+    <div className="flex flex-col h-screen w-full bg-ct-bg text-ct-text font-sans overflow-hidden transition-colors">
       {/* Top Header Panel */}
-      <header className="flex items-center justify-between px-6 py-4 bg-zinc-900/40 border-b border-zinc-800/80 backdrop-blur-md z-10">
+      <header className="flex items-center justify-between px-6 py-4 bg-ct-card border-b border-ct-border backdrop-blur-md z-10 transition-colors">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 shadow-md border border-violet-500/20">
             <MapPin className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-              ClassTrack <span className="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full font-medium">Dashboard</span>
+            <h1 className="text-lg font-bold text-ct-text tracking-tight flex items-center gap-2">
+              ClassTrack <span className="text-xs bg-ct-input border border-ct-border text-ct-muted px-2 py-0.5 rounded-full font-medium">Dashboard</span>
             </h1>
-            <p className="text-xs text-zinc-500">Instructor: {teacher?.name}</p>
+            <p className="text-xs text-ct-muted">Instructor: {teacher?.name}</p>
           </div>
         </div>
 
         {/* Dashboard Actions */}
         {activeSession ? (
           <div className="flex items-center gap-3">
-            <div className="hidden md:flex items-center gap-4 bg-zinc-950/60 border border-zinc-800/60 px-4 py-2 rounded-xl text-sm mr-2">
-              <div className="flex items-center gap-1.5 text-zinc-400">
-                <Clock className="w-4 h-4 text-violet-400 animate-pulse" />
+            <div className="hidden md:flex items-center gap-4 bg-ct-input border border-ct-border px-4 py-2 rounded-xl text-sm mr-2">
+              <div className="flex items-center gap-1.5 text-ct-muted">
+                <Clock className="w-4 h-4 text-violet-500 animate-pulse" />
                 <span>Timer:</span>
-                <span className="font-mono text-white font-semibold">{timeLeft}</span>
+                <span className="font-mono text-ct-text font-semibold">{timeLeft}</span>
               </div>
-              <div className="w-px h-4 bg-zinc-800"></div>
-              <div className="text-xs text-zinc-400">
-                Classroom: <span className="text-white font-semibold">{activeSession.classroom_name}</span>
+              <div className="w-px h-4 bg-ct-border"></div>
+              <div className="text-xs text-ct-muted">
+                Classroom: <span className="text-ct-text font-semibold">{activeSession.classroom_name}</span>
               </div>
             </div>
 
             <button
               onClick={() => setShowQrModal(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-bold transition-all text-xs cursor-pointer shadow-sm border border-zinc-700"
+              className="flex items-center gap-2 px-4 py-2.5 bg-ct-card border border-ct-border hover:bg-ct-card-solid text-ct-text rounded-xl font-bold transition-all text-xs cursor-pointer shadow-sm"
             >
-              <QrCode className="w-4 h-4 text-violet-400" />
+              <QrCode className="w-4 h-4 text-violet-500" />
               QR Link
             </button>
 
             <button
               onClick={() => setShowRadiusModal(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-bold transition-all text-xs cursor-pointer shadow-sm border border-zinc-700"
+              className="flex items-center gap-2 px-4 py-2.5 bg-ct-card border border-ct-border hover:bg-ct-card-solid text-ct-text rounded-xl font-bold transition-all text-xs cursor-pointer shadow-sm"
             >
-              <Sliders className="w-4 h-4 text-violet-400" />
+              <Sliders className="w-4 h-4 text-violet-500" />
               Radius ({activeSession.radius}m)
             </button>
 
             <button
               onClick={() => setShowAnalyticsModal(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-bold transition-all text-xs cursor-pointer shadow-sm border border-zinc-700"
+              className="flex items-center gap-2 px-4 py-2.5 bg-ct-card border border-ct-border hover:bg-ct-card-solid text-ct-text rounded-xl font-bold transition-all text-xs cursor-pointer shadow-sm"
             >
-              <Activity className="w-4 h-4 text-violet-400" />
+              <Activity className="w-4 h-4 text-violet-500" />
               Analytics
             </button>
 
             <button
               onClick={exportAttendanceCSV}
-              className="flex items-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-bold transition-all text-xs cursor-pointer shadow-sm border border-zinc-700"
+              className="flex items-center gap-2 px-4 py-2.5 bg-ct-card border border-ct-border hover:bg-ct-card-solid text-ct-text rounded-xl font-bold transition-all text-xs cursor-pointer shadow-sm"
             >
-              <Download className="w-4 h-4 text-violet-400" />
+              <Download className="w-4 h-4 text-violet-500" />
               Export CSV
             </button>
 
             <button
               onClick={handleEndSession}
-              className="flex items-center gap-2 px-4 py-2.5 bg-red-650 hover:bg-red-650 text-white rounded-xl font-bold transition-all text-xs cursor-pointer shadow-sm border border-red-500/20"
+              className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold transition-all text-xs cursor-pointer shadow-sm"
             >
               End Session
             </button>
           </div>
         ) : (
           <div className="flex items-center gap-3">
-            <span className="text-zinc-500 text-xs hidden sm:inline-block">No Active Attendance Session</span>
+            <span className="text-ct-muted text-xs hidden sm:inline-block">No Active Attendance Session</span>
           </div>
         )}
 
         <div className="flex items-center gap-3">
+          {/* Theme Toggle Button */}
+          <button
+            onClick={toggleTheme}
+            className="p-2.5 hover:bg-ct-card text-ct-muted hover:text-ct-text rounded-xl transition-colors cursor-pointer border border-transparent hover:border-ct-border"
+            title={theme === 'dark' ? 'Activate Light Mode' : 'Activate Dark Mode'}
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+
           {/* Audio Chime Mute button */}
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
-            className="p-2.5 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl transition-colors cursor-pointer border border-transparent hover:border-zinc-800"
+            className="p-2.5 hover:bg-ct-card text-ct-muted hover:text-ct-text rounded-xl transition-colors cursor-pointer border border-transparent hover:border-ct-border"
             title={soundEnabled ? 'Mute Alert Chimes' : 'Unmute Alert Chimes'}
           >
             {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4 text-red-400" />}
@@ -1004,7 +1036,7 @@ export default function Dashboard() {
           
           <button
             onClick={handleSignOut}
-            className="flex items-center gap-2 px-3.5 py-2.5 hover:bg-zinc-800/80 text-zinc-400 hover:text-white rounded-xl text-xs font-semibold cursor-pointer border border-transparent hover:border-zinc-800"
+            className="flex items-center gap-2 px-3.5 py-2.5 hover:bg-ct-card text-ct-muted hover:text-ct-text rounded-xl text-xs font-semibold cursor-pointer border border-transparent hover:border-ct-border"
           >
             <LogOut className="w-4 h-4" />
             Sign Out
@@ -1016,13 +1048,13 @@ export default function Dashboard() {
       <div className="flex flex-1 overflow-hidden">
         
         {/* Left Panel: Student list monitor */}
-        <aside className="w-80 border-r border-zinc-800/80 bg-zinc-900/10 backdrop-blur-sm flex flex-col flex-shrink-0">
-          <div className="p-4 border-b border-zinc-800/80">
+        <aside className="w-80 border-r border-ct-border bg-ct-card flex flex-col flex-shrink-0 transition-colors">
+          <div className="p-4 border-b border-ct-border">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-bold tracking-wider uppercase text-zinc-400">
+              <h2 className="text-sm font-bold tracking-wider uppercase text-ct-muted">
                 Student Tracking
               </h2>
-              <span className="text-[10px] px-2 py-0.5 bg-violet-950 border border-violet-900/50 rounded-full font-medium text-violet-400 flex items-center gap-1">
+              <span className="text-[10px] px-2 py-0.5 bg-violet-500/10 border border-violet-500/20 rounded-full font-medium text-violet-650 flex items-center gap-1">
                 <Users className="w-2.5 h-2.5" />
                 {totalStudents} joined
               </span>
@@ -1030,21 +1062,21 @@ export default function Dashboard() {
             
             {/* Search filter input */}
             <div className="relative">
-              <Search className="absolute left-3 inset-y-0 my-auto w-4 h-4 text-zinc-500" />
+              <Search className="absolute left-3 inset-y-0 my-auto w-4 h-4 text-ct-muted" />
               <input
                 type="text"
                 placeholder="Search name, roll..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-zinc-950/60 border border-zinc-850 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                className="w-full bg-ct-input border border-ct-border rounded-xl pl-9 pr-3 py-2.5 text-xs text-ct-text placeholder-ct-muted/50 focus:outline-none focus:ring-1 focus:ring-violet-500"
               />
             </div>
           </div>
 
           {/* Student items scroll view */}
-          <div className="flex-1 overflow-y-auto divide-y divide-zinc-900/60">
+          <div className="flex-1 overflow-y-auto divide-y divide-ct-border/40">
             {filteredStudents.length === 0 ? (
-              <div className="p-8 text-center text-zinc-500 text-xs leading-relaxed">
+              <div className="p-8 text-center text-ct-muted text-xs leading-relaxed">
                 {activeSession 
                   ? 'No students matched this query'
                   : 'Start a session to track student attendance'}
@@ -1064,17 +1096,17 @@ export default function Dashboard() {
                   <button
                     key={stud.id}
                     onClick={() => setSelectedStudentId(isSelected ? null : stud.id)}
-                    className={`w-full text-left p-4 transition-colors text-xs space-y-1 relative border-l-2 hover:bg-zinc-900/40 ${
+                    className={`w-full text-left p-4 transition-colors text-xs space-y-1 relative border-l-2 hover:bg-ct-card/40 ${
                       isSelected 
-                        ? 'bg-zinc-900/60 border-l-violet-500' 
+                        ? 'bg-ct-card border-l-violet-500' 
                         : 'border-l-transparent'
                     }`}
                   >
-                    <div className="font-semibold text-white truncate text-sm">{stud.name}</div>
-                    <div className="font-mono text-[10px] text-zinc-500">{stud.ip_address || 'No IP Address'}</div>
+                    <div className="font-semibold text-ct-text truncate text-sm">{stud.name}</div>
+                    <div className="font-mono text-[10px] text-ct-muted">{stud.ip_address || 'No IP Address'}</div>
                     <div className="flex items-center gap-1.5 pt-0.5">
                       <span className={`w-2 h-2 rounded-full ${statusColor}`} />
-                      <span className="text-[10px] text-zinc-400 font-medium capitalize">
+                      <span className="text-[10px] text-ct-muted font-medium capitalize">
                         {stud.status === 'inside' ? 'Inside' : stud.status === 'outside' ? 'Outside' : 'Offline'}
                       </span>
                     </div>
@@ -1085,44 +1117,44 @@ export default function Dashboard() {
           </div>
 
           {/* Network Information Card */}
-          <div className="p-4 border-t border-zinc-800/80 bg-zinc-900/40 space-y-3">
+          <div className="p-4 border-t border-ct-border bg-ct-card/20 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+              <span className="text-xs font-bold uppercase tracking-wider text-ct-muted">
                 Network Info
               </span>
               <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 ${
                 networkStatus === 'Ready' 
-                  ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-900/30' 
-                  : 'bg-rose-950/60 text-rose-400 border border-rose-900/30'
+                  ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
+                  : 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
               }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${networkStatus === 'Ready' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+                <span className={`w-1.5 h-1.5 rounded-full ${networkStatus === 'Ready' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
                 {networkStatus === 'Ready' ? '🟢 Ready' : '🔴 Error'}
               </span>
             </div>
 
             {networkInfo ? (
-              <div className="space-y-2 text-zinc-400 text-[10px] leading-relaxed bg-zinc-950/60 p-3 rounded-xl border border-zinc-800">
+              <div className="space-y-2 text-ct-muted text-[10px] leading-relaxed bg-ct-input p-3 rounded-xl border border-ct-border">
                 <div className="flex justify-between items-center">
                   <span>Host IP:</span>
-                  <span className="font-mono text-white font-semibold">{networkInfo.hostIp}</span>
+                  <span className="font-mono text-ct-text font-semibold">{networkInfo.hostIp}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span>Port:</span>
-                  <span className="font-mono text-white font-semibold">{networkInfo.port}</span>
+                  <span className="font-mono text-ct-text font-semibold">{networkInfo.port}</span>
                 </div>
-                <div className="border-t border-zinc-800/60 my-2 pt-2">
-                  <span className="block text-zinc-500 text-[9px] uppercase font-bold tracking-wider mb-1">Student Access URL</span>
-                  <div className="flex items-center justify-between gap-2 bg-zinc-900/80 p-2 rounded-lg border border-zinc-800/60">
-                    <span className="font-mono text-white truncate text-[9px] flex-1 select-all">
+                <div className="border-t border-ct-border/60 my-2 pt-2">
+                  <span className="block text-ct-muted text-[9px] uppercase font-bold tracking-wider mb-1">Student Access URL</span>
+                  <div className="flex items-center justify-between gap-2 bg-ct-card-solid p-2 rounded-lg border border-ct-border">
+                    <span className="font-mono text-ct-text truncate text-[9px] flex-1 select-all">
                       {getStudentAccessOrigin()}
                     </span>
                     <button
                       onClick={copyNetworkUrl}
-                      className="p-1 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-md transition-colors cursor-pointer flex-shrink-0"
+                      className="p-1 hover:bg-ct-card text-ct-muted hover:text-ct-text rounded-md transition-colors cursor-pointer flex-shrink-0"
                       title="Copy URL"
                     >
                       {copiedNetworkUrl ? (
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <Check className="w-3.5 h-3.5 text-emerald-500" />
                       ) : (
                         <Copy className="w-3.5 h-3.5" />
                       )}
@@ -1131,7 +1163,7 @@ export default function Dashboard() {
                 </div>
               </div>
             ) : (
-              <div className="p-3 text-center text-zinc-500 text-xs bg-zinc-950/60 rounded-xl border border-zinc-800 animate-pulse">
+              <div className="p-3 text-center text-ct-muted text-xs bg-ct-input rounded-xl border border-ct-border animate-pulse">
                 Detecting local IP address...
               </div>
             )}
@@ -1139,37 +1171,37 @@ export default function Dashboard() {
         </aside>
 
         {/* Center Panel: Map and controls */}
-        <main className="flex-1 relative bg-zinc-950 p-6 flex flex-col overflow-hidden">
+        <main className="flex-1 relative bg-ct-bg p-6 flex flex-col overflow-hidden transition-colors">
           {activeSession ? (
             <div className="flex flex-col flex-1 gap-6 overflow-hidden">
               
               {/* Top Summary Widget */}
-              <div className="grid grid-cols-4 gap-4 flex-shrink-0">
-                <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-4 flex items-center justify-between">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 flex-shrink-0">
+                <div className="bg-ct-card border border-ct-border rounded-2xl p-4 flex items-center justify-between transition-all hover:shadow-md">
                   <div>
-                    <span className="text-xs text-zinc-500">Total Checked In</span>
-                    <h3 className="text-2xl font-black mt-1 text-white">{totalStudents}</h3>
+                    <span className="text-xs text-ct-muted">Total Checked In</span>
+                    <h3 className="text-2xl font-black mt-1 text-ct-text">{totalStudents}</h3>
                   </div>
-                  <Users className="w-7 h-7 text-zinc-600" />
+                  <Users className="w-7 h-7 text-ct-muted" />
                 </div>
-                <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-4 flex items-center justify-between">
+                <div className="bg-ct-card border border-ct-border rounded-2xl p-4 flex items-center justify-between transition-all hover:shadow-md">
                   <div>
-                    <span className="text-xs text-zinc-500">Inside Boundary</span>
-                    <h3 className="text-2xl font-black mt-1 text-emerald-400">{presentCount}</h3>
+                    <span className="text-xs text-ct-muted">Inside Boundary</span>
+                    <h3 className="text-2xl font-black mt-1 text-emerald-500">{presentCount}</h3>
                   </div>
                   <ShieldCheck className="w-7 h-7 text-emerald-550/30" />
                 </div>
-                <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-4 flex items-center justify-between">
+                <div className="bg-ct-card border border-ct-border rounded-2xl p-4 flex items-center justify-between transition-all hover:shadow-md">
                   <div>
-                    <span className="text-xs text-zinc-500">Outside Boundary</span>
-                    <h3 className="text-2xl font-black mt-1 text-rose-400">{outsideCount}</h3>
+                    <span className="text-xs text-ct-muted">Outside Boundary</span>
+                    <h3 className="text-2xl font-black mt-1 text-rose-500">{outsideCount}</h3>
                   </div>
                   <AlertTriangle className="w-7 h-7 text-rose-550/30" />
                 </div>
-                <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-4 flex items-center justify-between">
+                <div className="bg-ct-card border border-ct-border rounded-2xl p-4 flex items-center justify-between transition-all hover:shadow-md">
                   <div>
-                    <span className="text-xs text-zinc-500">Connection Lost</span>
-                    <h3 className="text-2xl font-black mt-1 text-amber-400">{offlineCount}</h3>
+                    <span className="text-xs text-ct-muted">Connection Lost</span>
+                    <h3 className="text-2xl font-black mt-1 text-amber-500">{offlineCount}</h3>
                   </div>
                   <WifiOff className="w-7 h-7 text-amber-550/30" />
                 </div>
@@ -1182,83 +1214,134 @@ export default function Dashboard() {
                   classroomLng={activeSession.longitude}
                   radius={activeSession.radius}
                   students={aggregatedStudents}
+                  theme={theme}
                 />
               </div>
             </div>
           ) : (
             // No Session State: Create Classroom Session UI
-            <div className="flex flex-col flex-1 items-center justify-center p-6 max-w-xl mx-auto overflow-y-auto">
-              <div className="w-full text-center space-y-2 mb-8">
-                <div className="w-14 h-14 bg-violet-950 border border-violet-800 rounded-2xl flex items-center justify-center mx-auto text-violet-400">
-                  <Play className="w-7 h-7" />
+            <div className="flex flex-col flex-1 items-center justify-center p-6 max-w-xl mx-auto overflow-y-auto w-full">
+              <div className="w-full text-center space-y-2 mb-6">
+                <div className="w-12 h-12 bg-violet-500/10 border border-violet-500/20 rounded-2xl flex items-center justify-center mx-auto text-violet-500">
+                  <Play className="w-6 h-6" />
                 </div>
-                <h3 className="text-2xl font-bold text-white">Create Attendance Session</h3>
-                <p className="text-zinc-400 text-sm">Set up your geo-fence and start logging student locations</p>
+                <h3 className="text-2xl font-bold text-ct-text">Create Attendance Session</h3>
+                <p className="text-ct-muted text-xs">Set up your geo-fence and start logging student locations</p>
               </div>
 
               {/* Create session card */}
-              <div className="w-full bg-zinc-900/40 backdrop-blur-xl border border-zinc-800/80 rounded-2xl p-8 shadow-2xl">
+              <div className="w-full bg-ct-card border border-ct-border rounded-2xl p-6 sm:p-8 shadow-2xl">
                 <form onSubmit={handleCreateSession} className="space-y-5">
                   {formError && (
-                    <div className="flex items-center gap-3 p-4 rounded-xl bg-red-950/30 border border-red-900/50 text-red-200 text-sm">
-                      <ShieldAlert className="w-5 h-5 text-red-400 flex-shrink-0" />
+                    <div className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-650 dark:text-red-300 text-sm">
+                      <ShieldAlert className="w-5 h-5 text-red-500 flex-shrink-0" />
                       <span>{formError}</span>
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">Session Name</label>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-ct-muted mb-2">Session Name</label>
                       <input
                         type="text"
                         required
                         placeholder="CS-101 Lecture"
                         value={sessionNameInput}
                         onChange={(e) => setSessionNameInput(e.target.value)}
-                        className="block w-full px-3 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-violet-500/50 text-sm"
+                        className="block w-full px-3 py-2.5 bg-ct-input border border-ct-border rounded-xl text-ct-text placeholder-ct-muted/40 focus:outline-none focus:ring-1 focus:ring-violet-500 text-xs transition-all"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">Classroom Name</label>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-ct-muted mb-2">Classroom Name</label>
                       <input
                         type="text"
                         required
                         placeholder="Hall 3A"
                         value={classroomNameInput}
                         onChange={(e) => setClassroomNameInput(e.target.value)}
-                        className="block w-full px-3 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-violet-500/50 text-sm"
+                        className="block w-full px-3 py-2.5 bg-ct-input border border-ct-border rounded-xl text-ct-text placeholder-ct-muted/40 focus:outline-none focus:ring-1 focus:ring-violet-500 text-xs transition-all"
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">Geofence Radius (meters)</label>
-                      <select
-                        value={radiusInput}
-                        onChange={(e) => setRadiusInput(e.target.value)}
-                        className="block w-full px-3 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 text-sm"
-                      >
-                        <option value="15">15 meters</option>
-                        <option value="30">30 meters</option>
-                        <option value="50">50 meters</option>
-                        <option value="100">100 meters</option>
-                        <option value="200">200 meters</option>
-                      </select>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-ct-border/60 pt-4">
+                    {/* Radius Slider + Numeric Input */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-ct-muted">Geofence Radius (meters)</label>
+                        <span className="text-xs font-bold text-violet-500">{radiusInput}m</span>
+                      </div>
+                      <div className="flex gap-3 items-center">
+                        <input
+                          type="range"
+                          min="10"
+                          max="500"
+                          step="5"
+                          value={radiusInput}
+                          onChange={(e) => setRadiusInput(e.target.value)}
+                          className="flex-1 accent-violet-650 cursor-pointer"
+                        />
+                        <input
+                          type="number"
+                          min="10"
+                          max="500"
+                          value={radiusInput}
+                          onChange={(e) => {
+                            const val = Math.max(10, Math.min(500, parseInt(e.target.value) || 10))
+                            setRadiusInput(val.toString())
+                          }}
+                          className="w-20 px-2 py-1.5 bg-ct-input border border-ct-border rounded-lg text-ct-text focus:outline-none focus:ring-1 focus:ring-violet-500 text-xs font-mono text-center"
+                        />
+                      </div>
+                      <p className="text-[10px] text-ct-muted leading-tight">
+                        {parseInt(radiusInput) <= 25 ? '🏫 Classroom scale (Small)' :
+                         parseInt(radiusInput) <= 60 ? '🏫 Lecture Hall scale (Medium)' :
+                         parseInt(radiusInput) <= 120 ? '🏢 Department Block scale (Large)' :
+                         '🏟️ Campus quad / Outdoor arena scale (Extra Large)'}
+                      </p>
                     </div>
-                    <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">Duration (minutes)</label>
-                      <select
-                        value={durationInput}
-                        onChange={(e) => setDurationInput(e.target.value)}
-                        className="block w-full px-3 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 text-sm"
-                      >
-                        <option value="30">30 minutes</option>
-                        <option value="60">60 minutes</option>
-                        <option value="90">90 minutes</option>
-                        <option value="120">120 minutes</option>
-                        <option value="180">180 minutes</option>
-                      </select>
+
+                    {/* Duration Input + Presets */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-ct-muted">Duration (minutes)</label>
+                        <span className="text-xs font-bold text-violet-500">
+                          {Math.floor(parseInt(durationInput) / 60) > 0 ? `${Math.floor(parseInt(durationInput) / 60)}h ` : ''}
+                          {parseInt(durationInput) % 60}m
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          min="5"
+                          max="480"
+                          value={durationInput}
+                          onChange={(e) => {
+                            const val = Math.max(5, Math.min(480, parseInt(e.target.value) || 5))
+                            setDurationInput(val.toString())
+                          }}
+                          className="w-20 px-2 py-1.5 bg-ct-input border border-ct-border rounded-lg text-ct-text focus:outline-none focus:ring-1 focus:ring-violet-500 text-xs font-mono text-center"
+                        />
+                        <div className="flex-1 grid grid-cols-4 gap-1">
+                          {['30', '60', '90', '120'].map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => setDurationInput(preset)}
+                              className={`py-1 rounded-md border text-[10px] font-bold transition-all cursor-pointer ${
+                                durationInput === preset
+                                  ? 'bg-violet-600 border-violet-500 text-white shadow-sm shadow-violet-500/10'
+                                  : 'bg-ct-card border-ct-border text-ct-muted hover:text-ct-text'
+                              }`}
+                            >
+                              {preset}m
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-ct-muted leading-tight">
+                        Enter from 5 to 480 minutes (8 hours maximum).
+                      </p>
                     </div>
                   </div>
 
@@ -1355,19 +1438,19 @@ export default function Dashboard() {
 
           {/* Detailed Student view overlay drawer (when student is clicked in sidebar) */}
           {selectedStudent && (
-            <div className="absolute top-0 right-0 h-full w-80 bg-zinc-900/95 backdrop-blur-xl border-l border-zinc-800 shadow-2xl flex flex-col z-[1000] p-6 animate-in slide-in-from-right duration-300">
-              <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
-                <h3 className="font-bold text-white text-sm">Student Details</h3>
+            <div className="absolute top-0 right-0 h-full w-80 bg-ct-card-solid/95 backdrop-blur-xl border-l border-ct-border shadow-2xl flex flex-col z-[1000] p-6 animate-in slide-in-from-right duration-300">
+              <div className="flex items-center justify-between border-b border-ct-border pb-4">
+                <h3 className="font-bold text-ct-text text-sm">Student Details</h3>
                 <button
                   onClick={() => setSelectedStudentId(null)}
-                  className="p-1 hover:bg-zinc-800 text-zinc-500 hover:text-white rounded-lg transition-colors cursor-pointer"
+                  className="p-1 hover:bg-ct-border text-ct-muted hover:text-ct-text rounded-lg transition-colors cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
               <div className="flex-1 overflow-y-auto py-6 space-y-5 text-xs">
-                <div className="flex flex-col items-center text-center pb-4 border-b border-zinc-800/50">
+                <div className="flex flex-col items-center text-center pb-4 border-b border-ct-border/50">
                   <div className={`w-12 h-12 rounded-full border-2 flex items-center justify-center font-bold text-lg mb-3 ${
                     selectedStudent.status === 'inside'
                       ? 'border-emerald-500 text-emerald-400 bg-emerald-950/10'
@@ -1377,21 +1460,21 @@ export default function Dashboard() {
                   }`}>
                     {selectedStudent.name.charAt(0).toUpperCase()}
                   </div>
-                  <h4 className="font-bold text-white text-base">{selectedStudent.name}</h4>
-                  <span className="text-[10px] text-zinc-500 uppercase tracking-wider mt-1">{selectedStudent.department}</span>
+                  <h4 className="font-bold text-ct-text text-base">{selectedStudent.name}</h4>
+                  <span className="text-[10px] text-ct-muted uppercase tracking-wider mt-1">{selectedStudent.department}</span>
                 </div>
 
                 <div className="space-y-4">
                   <div>
-                    <span className="text-zinc-500 block">Roll / Student Number</span>
-                    <span className="text-zinc-200 font-semibold mt-0.5 block">{selectedStudent.roll_number}</span>
+                    <span className="text-ct-muted block">Roll / Student Number</span>
+                    <span className="text-ct-text font-semibold mt-0.5 block">{selectedStudent.roll_number}</span>
                   </div>
                   <div>
-                    <span className="text-zinc-500 block">IP Address</span>
-                    <span className="text-zinc-200 font-mono mt-0.5 block">{selectedStudent.ip_address || 'N/A'}</span>
+                    <span className="text-ct-muted block">IP Address</span>
+                    <span className="text-ct-text font-mono mt-0.5 block">{selectedStudent.ip_address || 'N/A'}</span>
                   </div>
                   <div>
-                    <span className="text-zinc-500 block">Status</span>
+                    <span className="text-ct-muted block">Status</span>
                     <span className={`font-semibold mt-0.5 block capitalize ${
                       selectedStudent.status === 'inside'
                         ? 'text-emerald-400'
@@ -1403,14 +1486,14 @@ export default function Dashboard() {
                     </span>
                   </div>
                   <div>
-                    <span className="text-zinc-500 block">Distance From Classroom</span>
-                    <span className="text-zinc-200 mt-0.5 block font-semibold">
+                    <span className="text-ct-muted block">Distance From Classroom</span>
+                    <span className="text-ct-text mt-0.5 block font-semibold">
                       {selectedStudent.distance !== undefined ? `${selectedStudent.distance} meters` : 'N/A'}
                     </span>
                   </div>
                   <div>
-                    <span className="text-zinc-500 block">Last Seen Timestamp</span>
-                    <span className="text-zinc-200 mt-0.5 block">
+                    <span className="text-ct-muted block">Last Seen Timestamp</span>
+                    <span className="text-ct-text mt-0.5 block">
                       {selectedStudent.last_seen 
                         ? new Date(selectedStudent.last_seen).toLocaleString() 
                         : 'Never'}
@@ -1418,25 +1501,25 @@ export default function Dashboard() {
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <span className="text-zinc-500 block">Latitude</span>
-                      <span className="text-zinc-200 font-mono mt-0.5 block">{selectedStudent.latitude?.toFixed(6) ?? 'N/A'}</span>
+                      <span className="text-ct-muted block">Latitude</span>
+                      <span className="text-ct-text font-mono mt-0.5 block">{selectedStudent.latitude?.toFixed(6) ?? 'N/A'}</span>
                     </div>
                     <div>
-                      <span className="text-zinc-500 block">Longitude</span>
-                      <span className="text-zinc-200 font-mono mt-0.5 block">{selectedStudent.longitude?.toFixed(6) ?? 'N/A'}</span>
+                      <span className="text-ct-muted block">Longitude</span>
+                      <span className="text-ct-text font-mono mt-0.5 block">{selectedStudent.longitude?.toFixed(6) ?? 'N/A'}</span>
                     </div>
                   </div>
                   <div>
-                    <span className="text-zinc-500 block">Browser</span>
-                    <span className="text-zinc-200 mt-0.5 block">{selectedStudent.browser_info || 'Unknown'}</span>
+                    <span className="text-ct-muted block">Browser</span>
+                    <span className="text-ct-text mt-0.5 block">{selectedStudent.browser_info || 'Unknown'}</span>
                   </div>
                   <div>
-                    <span className="text-zinc-550 block">Device</span>
-                    <span className="text-zinc-200 mt-0.5 block">{selectedStudent.device_type || 'Unknown'}</span>
+                    <span className="text-ct-muted block">Device</span>
+                    <span className="text-ct-text mt-0.5 block">{selectedStudent.device_type || 'Unknown'}</span>
                   </div>
                   <div>
-                    <span className="text-zinc-500 block mb-1">User Agent String</span>
-                    <div className="bg-zinc-950/60 p-2.5 rounded-lg border border-zinc-850 text-[9px] text-zinc-400 break-all leading-normal max-h-24 overflow-y-auto">
+                    <span className="text-ct-muted block mb-1">User Agent String</span>
+                    <div className="bg-ct-bg/60 p-2.5 rounded-lg border border-ct-border text-[9px] text-ct-muted break-all leading-normal max-h-24 overflow-y-auto">
                       {selectedStudent.user_agent || 'Unknown'}
                     </div>
                   </div>
@@ -1552,35 +1635,35 @@ export default function Dashboard() {
 
       {/* Modify Geofence Radius Modal */}
       {showRadiusModal && activeSession && (
-        <div className="fixed inset-0 z-[1500] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-xs bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <h3 className="font-bold text-white text-sm">Radius Settings</h3>
+        <div className="fixed inset-0 z-[1500] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="w-full max-w-xs bg-ct-card-solid border border-ct-border rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-ct-border pb-3">
+              <h3 className="font-bold text-ct-text text-sm">Radius Settings</h3>
               <button
                 onClick={() => setShowRadiusModal(false)}
-                className="p-1 hover:bg-zinc-800 text-zinc-500 hover:text-white rounded-lg transition-colors cursor-pointer"
+                className="p-1 hover:bg-ct-card text-ct-muted hover:text-ct-text rounded-lg transition-colors cursor-pointer"
               >
-                <X className="w-4.5 h-4.5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs text-zinc-400 mb-2 font-medium">Classroom Radius (meters)</label>
+                <label className="block text-xs text-ct-muted mb-2 font-medium">Classroom Radius (meters)</label>
                 <div className="flex gap-2 items-center">
                   <button
                     onClick={() => {
                       const current = parseInt(newRadiusInput) || 50
                       setNewRadiusInput(Math.max(10, current - 10).toString())
                     }}
-                    className="p-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl border border-zinc-700 font-bold text-xs flex items-center justify-center w-10 cursor-pointer"
+                    className="p-2.5 bg-ct-card hover:bg-ct-card-solid text-ct-text rounded-xl border border-ct-border font-bold text-xs flex items-center justify-center w-10 cursor-pointer"
                   >
                     -
                   </button>
                   <select
                     value={newRadiusInput}
                     onChange={(e) => setNewRadiusInput(e.target.value)}
-                    className="flex-1 block px-3 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 text-xs font-mono"
+                    className="flex-1 block px-3 py-2.5 bg-ct-input border border-ct-border rounded-xl text-ct-text focus:outline-none focus:ring-1 focus:ring-violet-500 text-xs font-mono"
                   >
                     <option value="10">10m</option>
                     <option value="15">15m</option>
@@ -1598,7 +1681,7 @@ export default function Dashboard() {
                       const current = parseInt(newRadiusInput) || 50
                       setNewRadiusInput((current + 10).toString())
                     }}
-                    className="p-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl border border-zinc-700 font-bold text-xs flex items-center justify-center w-10 cursor-pointer"
+                    className="p-2.5 bg-ct-card hover:bg-ct-card-solid text-ct-text rounded-xl border border-ct-border font-bold text-xs flex items-center justify-center w-10 cursor-pointer"
                   >
                     +
                   </button>
@@ -1615,46 +1698,47 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
       {/* Session Analytics Modal */}
       {showAnalyticsModal && activeSession && (
-        <div className="fixed inset-0 z-[1500] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-6">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <h3 className="font-bold text-white text-sm">Session Analytics</h3>
+        <div className="fixed inset-0 z-[1500] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm bg-ct-card-solid border border-ct-border rounded-2xl p-6 shadow-2xl space-y-6">
+            <div className="flex items-center justify-between border-b border-ct-border pb-3">
+              <h3 className="font-bold text-ct-text text-sm">Session Analytics</h3>
               <button
                 onClick={() => setShowAnalyticsModal(false)}
-                className="p-1 hover:bg-zinc-800 text-zinc-500 hover:text-white rounded-lg transition-colors cursor-pointer"
+                className="p-1 hover:bg-ct-card text-ct-muted hover:text-ct-text rounded-lg transition-colors cursor-pointer"
               >
                 <X className="w-4.5 h-4.5" />
               </button>
             </div>
 
             <div className="grid grid-cols-2 gap-4 text-xs">
-              <div className="bg-zinc-950/40 border border-zinc-800/50 rounded-xl p-3.5 space-y-1">
-                <span className="text-zinc-500 block">Total Joined</span>
-                <span className="text-lg font-black text-white">{totalStudents}</span>
+              <div className="bg-ct-input border border-ct-border rounded-xl p-3.5 space-y-1">
+                <span className="text-ct-muted block">Total Joined</span>
+                <span className="text-lg font-black text-ct-text">{totalStudents}</span>
               </div>
-              <div className="bg-zinc-950/40 border border-zinc-800/50 rounded-xl p-3.5 space-y-1">
+              <div className="bg-ct-input border border-ct-border rounded-xl p-3.5 space-y-1">
                 <span className="text-emerald-500 block">Current Present</span>
-                <span className="text-lg font-black text-emerald-400">{presentCount}</span>
+                <span className="text-lg font-black text-emerald-500">{presentCount}</span>
               </div>
-              <div className="bg-zinc-950/40 border border-zinc-800/50 rounded-xl p-3.5 space-y-1">
+              <div className="bg-ct-input border border-ct-border rounded-xl p-3.5 space-y-1">
                 <span className="text-rose-500 block">Students Outside</span>
-                <span className="text-lg font-black text-rose-400">{outsideCount}</span>
+                <span className="text-lg font-black text-rose-500">{outsideCount}</span>
               </div>
-              <div className="bg-zinc-950/40 border border-zinc-800/50 rounded-xl p-3.5 space-y-1">
+              <div className="bg-ct-input border border-ct-border rounded-xl p-3.5 space-y-1">
                 <span className="text-amber-500 block">Students Offline</span>
-                <span className="text-lg font-black text-amber-400">{offlineCount}</span>
+                <span className="text-lg font-black text-amber-500">{offlineCount}</span>
               </div>
-              <div className="col-span-2 bg-zinc-950/40 border border-zinc-800/50 rounded-xl p-3.5 flex justify-between items-center">
-                <span className="text-zinc-400 font-medium">Avg Session Duration</span>
-                <span className="text-sm font-bold text-violet-400 font-mono">{getAverageSessionDuration()}</span>
+              <div className="col-span-2 bg-ct-input border border-ct-border rounded-xl p-3.5 flex justify-between items-center">
+                <span className="text-ct-muted font-medium">Avg Session Duration</span>
+                <span className="text-sm font-bold text-violet-500 font-mono">{getAverageSessionDuration()}</span>
               </div>
             </div>
 
             <button
               onClick={() => setShowAnalyticsModal(false)}
-              className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md"
+              className="w-full py-3 bg-ct-card border border-ct-border hover:bg-ct-card text-ct-text rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md"
             >
               Close Analytics
             </button>
