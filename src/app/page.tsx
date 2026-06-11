@@ -20,7 +20,11 @@ import {
   CheckCircle2,
   Smartphone,
   Server,
-  Sparkles
+  Sparkles,
+  X,
+  HelpCircle,
+  TrendingUp,
+  Award
 } from 'lucide-react'
 
 export default function Home() {
@@ -28,8 +32,6 @@ export default function Home() {
   
   // Dynamic import workaround or safe navigation hook
   useEffect(() => {
-    // We import useRouter inside useEffect if Next.js version differences occur, or use dynamic setup.
-    // However, the standard Next.js next/navigation is safe.
     import('next/navigation').then((mod) => {
       setRouter(mod.useRouter())
     })
@@ -55,6 +57,48 @@ export default function Home() {
     localStorage.setItem('theme', nextTheme)
     document.documentElement.classList.toggle('dark', nextTheme === 'dark')
   }
+
+  // Live Simulator States
+  const [mockRadius, setMockRadius] = useState(60)
+  const [mockStudents, setMockStudents] = useState([
+    { name: 'Alice Smith', r: 35, angle: 45, dept: 'CS' },
+    { name: 'Bob Johnson', r: 85, angle: 135, dept: 'EE' },
+    { name: 'Charlie Brown', r: 20, angle: 220, dept: 'ME' },
+    { name: 'David Miller', r: 120, angle: 310, dept: 'IT' },
+    { name: 'Emma Wilson', r: 55, angle: 10, dept: 'CS' }
+  ])
+  const [feedLog, setFeedLog] = useState<string[]>([
+    'Charlie Brown logged check-in: 🟢 Inside',
+    'Alice Smith logged check-in: 🟢 Inside'
+  ])
+
+  // Random check-in event simulation
+  const simulateCheckIn = () => {
+    const names = ['Sophia Davis', 'Liam Martinez', 'Olivia Garcia', 'Noah Rodriguez', 'Ava Hernandez']
+    const depts = ['CS', 'EE', 'ME', 'IT', 'BIO']
+    const randomName = names[Math.floor(Math.random() * names.length)]
+    const randomDept = depts[Math.floor(Math.random() * depts.length)]
+    const randomRadius = Math.floor(Math.random() * 140) + 10
+    const randomAngle = Math.floor(Math.random() * 360)
+    
+    // Add new student
+    const newStudent = { name: randomName, r: randomRadius, angle: randomAngle, dept: randomDept }
+    setMockStudents((prev) => [newStudent, ...prev.slice(0, 4)])
+    
+    // Append log
+    const statusText = randomRadius <= mockRadius ? '🟢 Inside' : '🔴 Outside'
+    setFeedLog((prev) => [
+      `${randomName} checked in: ${statusText} (Dist: ${randomRadius}m)`,
+      ...prev.slice(0, 2)
+    ])
+  }
+
+  // Dynamic status count
+  const presentCount = mockStudents.filter((s) => s.r <= mockRadius).length
+  const outsideCount = mockStudents.filter((s) => s.r > mockRadius).length
+
+  // FAQ Active State Accordion
+  const [activeFaq, setActiveFaq] = useState<number | null>(null)
 
   // Auth modal states
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
@@ -123,261 +167,425 @@ export default function Home() {
   }
 
   return (
-    <div className="relative min-h-screen w-full bg-ct-bg text-ct-text font-sans overflow-x-hidden transition-colors duration-200">
-      {/* Background Graphic Blobs */}
-      <div className="absolute top-[-10%] left-[-10%] w-[600px] h-[600px] rounded-full bg-ct-glow-violet blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] rounded-full bg-ct-glow-emerald blur-[120px] pointer-events-none" />
+    <div className="relative min-h-screen w-full bg-ct-bg text-ct-text font-sans overflow-x-hidden transition-colors duration-300 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:20px_20px]">
+      {/* Background Graphic Glows */}
+      <div className="absolute top-[-10%] left-[-10%] w-[600px] h-[600px] rounded-full bg-ct-glow-violet blur-[150px] pointer-events-none" />
+      <div className="absolute bottom-[20%] right-[-10%] w-[600px] h-[600px] rounded-full bg-ct-glow-emerald blur-[150px] pointer-events-none" />
 
       {/* Header / Nav Bar */}
-      <header className="sticky top-0 z-40 w-full bg-ct-bg/75 backdrop-blur-md border-b border-ct-border py-4 px-6 md:px-12 flex justify-between items-center transition-colors">
+      <header className="sticky top-0 z-40 w-full bg-ct-bg/75 backdrop-blur-md border-b border-ct-border py-4 px-6 md:px-12 flex justify-between items-center transition-all duration-300 shadow-sm">
         <div className="flex items-center gap-2.5">
-          <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 shadow-md border border-violet-500/20">
-            <MapPin className="w-5 h-5 text-white" />
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 shadow-md border border-violet-500/20">
+            <MapPin className="w-5.5 h-5.5 text-white" />
           </div>
           <span className="text-xl font-black tracking-tight">
-            Class<span className="bg-gradient-to-r from-violet-500 to-indigo-500 bg-clip-text text-transparent">Track</span>
+            Class<span className="bg-gradient-to-r from-violet-500 to-indigo-500 bg-clip-text text-transparent font-extrabold">Track</span>
           </span>
         </div>
 
-        <nav className="hidden md:flex items-center gap-8 text-xs font-semibold text-ct-muted">
+        <nav className="hidden md:flex items-center gap-8 text-xs font-bold uppercase tracking-wider text-ct-muted">
           <a href="#features" className="hover:text-ct-text transition-colors">Features</a>
+          <a href="#simulator" className="hover:text-ct-text transition-colors">Simulator</a>
           <a href="#workflow" className="hover:text-ct-text transition-colors">Workflow</a>
-          <a href="#benefits" className="hover:text-ct-text transition-colors">Benefits</a>
+          <a href="#faq" className="hover:text-ct-text transition-colors">FAQ</a>
         </nav>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {/* Theme Toggle Button */}
           <button
             onClick={toggleTheme}
-            className="p-2 rounded-xl hover:bg-ct-card border border-transparent hover:border-ct-border text-ct-muted hover:text-ct-text transition-all cursor-pointer"
+            className="p-2.5 rounded-xl hover:bg-ct-card border border-transparent hover:border-ct-border text-ct-muted hover:text-ct-text transition-all cursor-pointer shadow-sm"
             title={theme === 'dark' ? 'Activate Light Mode' : 'Activate Dark Mode'}
           >
-            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            {theme === 'dark' ? <Sun className="w-4 h-4 text-violet-400 animate-pulse" /> : <Moon className="w-4 h-4 text-indigo-500" />}
           </button>
           
           <button
             onClick={() => openAuthModal(true)}
-            className="px-4 py-2 border border-ct-border hover:bg-ct-card rounded-xl text-xs font-bold transition-all cursor-pointer"
+            className="hidden sm:inline-block px-4 py-2 text-xs font-bold border border-ct-border hover:bg-ct-card rounded-xl transition-all cursor-pointer hover:border-ct-text shadow-sm"
           >
-            Instructor Sign In
+            Sign In
           </button>
           <button
             onClick={() => openAuthModal(false)}
-            className="px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-violet-500/10 cursor-pointer"
+            className="px-4 py-2 text-xs font-bold bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl transition-all shadow-md shadow-violet-500/20 cursor-pointer"
           >
-            Register
+            Get Started
           </button>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="relative px-6 md:px-12 pt-20 pb-24 max-w-5xl mx-auto text-center space-y-6">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-600 dark:text-violet-400 text-xs font-bold uppercase tracking-wider mb-2">
-          <Sparkles className="w-3.5 h-3.5" />
-          Attendance Tracker V2 is Live
-        </div>
-        <h1 className="text-4xl sm:text-6xl font-black tracking-tight leading-[1.15]">
-          Classroom Attendance,<br />
-          <span className="bg-gradient-to-r from-violet-500 to-indigo-500 bg-clip-text text-transparent">Perfected.</span>
-        </h1>
-        <p className="max-w-2xl mx-auto text-ct-muted text-sm sm:text-base leading-relaxed">
-          ClassTrack leverages secure geofencing and dynamic coordinate validation to verify student attendance in real time. Eliminate proxies, verify locations, and gain immediate insights.
-        </p>
-        <div className="pt-4 flex flex-col sm:flex-row justify-center items-center gap-4">
-          <button
-            onClick={() => openAuthModal(false)}
-            className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-violet-500/15 flex items-center justify-center gap-2 group cursor-pointer"
-          >
-            Get Started (Free)
-            <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-          </button>
-          <a
-            href="#features"
-            className="w-full sm:w-auto px-8 py-4 border border-ct-border hover:bg-ct-card text-ct-text rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
-          >
-            Explore Features
-          </a>
+      {/* Hero Grid Section */}
+      <section className="relative px-6 md:px-12 pt-16 pb-20 max-w-7xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+          
+          {/* Left Column: Headline and CTAs */}
+          <div className="lg:col-span-7 space-y-6 text-left animate-in fade-in slide-in-from-left duration-500">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-600 dark:text-violet-400 text-[10px] font-bold uppercase tracking-wider">
+              <Sparkles className="w-3.5 h-3.5" />
+              Advanced Geofenced Attendance V2
+            </div>
+            
+            <h1 className="text-4xl sm:text-6xl font-black tracking-tight leading-[1.15]">
+              Verify Attendance.<br />
+              <span className="bg-gradient-to-r from-violet-500 to-indigo-500 bg-clip-text text-transparent font-black">Prevent Proxies.</span>
+            </h1>
+            
+            <p className="text-ct-muted text-sm sm:text-base leading-relaxed max-w-xl">
+              ClassTrack matches real-time high-accuracy mobile GPS coordinates against dynamic geofenced boundaries to verify student presence instantly. No app installation required.
+            </p>
+
+            <div className="flex flex-col sm:flex-row items-center gap-4 pt-2">
+              <button
+                onClick={() => openAuthModal(false)}
+                className="w-full sm:w-auto px-7 py-3.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-violet-500/15 flex items-center justify-center gap-2 group cursor-pointer"
+              >
+                Register as Instructor
+                <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+              </button>
+              <a
+                href="#simulator"
+                className="w-full sm:w-auto px-7 py-3.5 border border-ct-border hover:bg-ct-card text-ct-text rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer hover:border-ct-text shadow-sm"
+              >
+                Try Interactive Demo
+              </a>
+            </div>
+
+            {/* Quick Proof Metrics */}
+            <div className="pt-8 grid grid-cols-3 gap-6 border-t border-ct-border">
+              <div className="space-y-1">
+                <span className="text-xl sm:text-2xl font-black text-ct-text">99.9%</span>
+                <p className="text-[10px] text-ct-muted uppercase font-bold tracking-wider">GPS Accuracy</p>
+              </div>
+              <div className="space-y-1">
+                <span className="text-xl sm:text-2xl font-black text-ct-text">0</span>
+                <p className="text-[10px] text-ct-muted uppercase font-bold tracking-wider">App Installs</p>
+              </div>
+              <div className="space-y-1">
+                <span className="text-xl sm:text-2xl font-black text-ct-text">&lt; 3s</span>
+                <p className="text-[10px] text-ct-muted uppercase font-bold tracking-wider">Logging Speed</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Live Interactive Simulator */}
+          <div id="simulator" className="lg:col-span-5 animate-in fade-in slide-in-from-right duration-500">
+            <div className="bg-ct-card backdrop-blur-xl border border-ct-border rounded-2xl shadow-2xl p-5 sm:p-6 space-y-4 text-left relative overflow-hidden">
+              
+              {/* Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-ct-border">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <h3 className="font-extrabold text-xs uppercase tracking-wider text-ct-text">Geofence Simulator</h3>
+                </div>
+                <button 
+                  onClick={simulateCheckIn}
+                  className="px-2.5 py-1 bg-violet-500/10 hover:bg-violet-500/25 border border-violet-500/20 text-violet-600 dark:text-violet-400 rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                >
+                  Simulate Check-In
+                </button>
+              </div>
+
+              {/* Map SVG Visualizer */}
+              <div className="relative">
+                <svg className="w-full h-48 bg-ct-bg/50 border border-ct-border rounded-xl shadow-inner" viewBox="0 0 200 200">
+                  <defs>
+                    <pattern id="mock-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                      <circle cx="2" cy="2" r="0.75" fill="currentColor" className="text-ct-muted opacity-25" />
+                    </pattern>
+                  </defs>
+                  <rect width="100%" height="100%" fill="url(#mock-grid)" />
+                  
+                  {/* Classroom Center Point */}
+                  <circle cx="100" cy="100" r="5" fill="#8b5cf6" className="animate-pulse" />
+                  <circle cx="100" cy="100" r="2" fill="#ffffff" />
+                  
+                  {/* Dynamic Geofence Circle */}
+                  <circle 
+                    cx="100" 
+                    cy="100" 
+                    r={(mockRadius / 150) * 80} 
+                    fill="rgba(139, 92, 246, 0.04)" 
+                    stroke="#8b5cf6" 
+                    strokeWidth="1.5" 
+                    strokeDasharray="4 2" 
+                    className="transition-all duration-300"
+                  />
+                  
+                  {/* Student markers */}
+                  {mockStudents.map((s, idx) => {
+                    const isInside = s.r <= mockRadius
+                    const rad = (s.angle * Math.PI) / 180
+                    const x = 100 + (s.r / 150) * 80 * Math.cos(rad)
+                    const y = 100 + (s.r / 150) * 80 * Math.sin(rad)
+                    return (
+                      <g key={idx}>
+                        {isInside && (
+                          <circle cx={x} cy={y} r="8" fill="none" stroke="#10b981" strokeWidth="0.75" className="animate-ping origin-center" />
+                        )}
+                        <circle cx={x} cy={y} r="4" fill={isInside ? '#10b981' : '#f43f5e'} className="transition-all duration-300" />
+                        <text x={x} y={y - 7} textAnchor="middle" fontSize="6.5" fontWeight="bold" fill="currentColor" className="text-ct-text font-semibold opacity-75 font-mono select-none">
+                          {s.name.split(' ')[0]}
+                        </text>
+                      </g>
+                    )
+                  })}
+                </svg>
+                
+                {/* Live Stats Badges */}
+                <div className="absolute bottom-2 left-2 flex gap-1.5 text-[9px] font-bold">
+                  <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    🟢 Inside: {presentCount}
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                    🔴 Outside: {outsideCount}
+                  </span>
+                </div>
+              </div>
+
+              {/* Slider Controller */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] font-extrabold uppercase tracking-wider text-ct-muted">
+                  <span>Simulated Geofence Radius</span>
+                  <span className="text-violet-500 font-bold">{mockRadius} meters</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="30" 
+                  max="130" 
+                  value={mockRadius} 
+                  onChange={(e) => setMockRadius(parseInt(e.target.value))}
+                  className="w-full accent-violet-650 h-1 bg-ct-bg border border-ct-border rounded-lg appearance-none cursor-pointer"
+                />
+              </div>
+
+              {/* Live activity log */}
+              <div className="space-y-1.5 border-t border-ct-border pt-3">
+                <span className="text-[9px] font-extrabold uppercase tracking-wider text-ct-muted block">Live Simulator Feed</span>
+                <div className="space-y-1 font-mono text-[9px] text-ct-muted">
+                  {feedLog.map((log, index) => (
+                    <div key={index} className="flex items-center gap-1.5 truncate">
+                      <span className="text-violet-500">▶</span>
+                      <span>{log}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+          </div>
+
         </div>
       </section>
 
-      {/* Feature Spotlights */}
-      <section id="features" className="px-6 md:px-12 py-20 border-t border-ct-border max-w-6xl mx-auto space-y-16">
+      {/* Core Capabilities */}
+      <section id="features" className="px-6 md:px-12 py-20 border-t border-ct-border max-w-6xl mx-auto space-y-12">
         <div className="text-center space-y-3">
+          <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-violet-500/10 text-violet-500 mb-1">
+            <Award className="w-5 h-5" />
+          </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Core Capabilities</h2>
           <p className="text-ct-muted text-sm max-w-lg mx-auto">
-            Everything you need to automate check-ins, map geographic boundaries, and analyze attendance patterns.
+            ClassTrack provides robust tools to launch dynamic geofences, monitor student metrics, and secure grades.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Card 1 */}
-          <div className="bg-ct-card border border-ct-border p-6 rounded-2xl space-y-4 hover:border-violet-500/40 hover:shadow-lg transition-all duration-300">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-4">
+          
+          <div className="bg-ct-card border border-ct-border p-6 rounded-2xl space-y-4 hover:border-violet-500/30 hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
             <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center text-violet-500">
               <QrCode className="w-5 h-5" />
             </div>
-            <h3 className="text-lg font-bold">QR Attendance Check-In</h3>
+            <h3 className="text-base font-bold text-ct-text">No-Install Student QR</h3>
             <p className="text-ct-muted text-xs leading-relaxed">
-              Instructors generate active session QR codes. Students simply scan from their mobile browser to join the session. No app installs required.
+              No App Store downloads. Students scan a dynamic QR code and launch location tracking instantly inside any mobile browser.
             </p>
           </div>
 
-          {/* Card 2 */}
-          <div className="bg-ct-card border border-ct-border p-6 rounded-2xl space-y-4 hover:border-violet-500/40 hover:shadow-lg transition-all duration-300">
+          <div className="bg-ct-card border border-ct-border p-6 rounded-2xl space-y-4 hover:border-violet-500/30 hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
             <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center text-violet-500">
               <Compass className="w-5 h-5" />
             </div>
-            <h3 className="text-lg font-bold">Dynamic Geofence Radius</h3>
+            <h3 className="text-base font-bold text-ct-text">Interactive Geofences</h3>
             <p className="text-ct-muted text-xs leading-relaxed">
-              Define the classroom boundary with sub-meter accuracy. Adjust your circle geofence radius live and see coordinates verify instantly.
+              Configure boundary limits using numeric inputs or visual sliders. Radius updates propagate to active student sockets in real time.
             </p>
           </div>
 
-          {/* Card 3 */}
-          <div className="bg-ct-card border border-ct-border p-6 rounded-2xl space-y-4 hover:border-violet-500/40 hover:shadow-lg transition-all duration-300">
+          <div className="bg-ct-card border border-ct-border p-6 rounded-2xl space-y-4 hover:border-violet-500/30 hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
             <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center text-violet-500">
               <Smartphone className="w-5 h-5" />
             </div>
-            <h3 className="text-lg font-bold">Live Mobile GPS Tracking</h3>
+            <h3 className="text-base font-bold text-ct-text">GPS Moving-Average Filter</h3>
             <p className="text-ct-muted text-xs leading-relaxed">
-              Students transmit location updates in the background. If a student leaves the classroom boundary, status indicators update to alert both parties.
+              Suppresses GPS noise and jumps inside concrete walls. Device readings are averaged across the last 3 coordinates and gated to filter weak accuracy signals.
             </p>
           </div>
 
-          {/* Card 4 */}
-          <div className="bg-ct-card border border-ct-border p-6 rounded-2xl space-y-4 hover:border-violet-500/40 hover:shadow-lg transition-all duration-300">
+          <div className="bg-ct-card border border-ct-border p-6 rounded-2xl space-y-4 hover:border-violet-500/30 hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
             <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center text-violet-500">
               <Activity className="w-5 h-5" />
             </div>
-            <h3 className="text-lg font-bold">Real-Time Monitor Map</h3>
+            <h3 className="text-base font-bold text-ct-text">Live Classroom Map</h3>
             <p className="text-ct-muted text-xs leading-relaxed">
-              Watch students populate on an interactive map. Live status changes (Inside, Outside, Offline) synchronize automatically via WebSockets or polling.
+              Monitors present students, out-of-boundary students, and offline connections live on a dynamic map synced with server logs.
             </p>
           </div>
 
-          {/* Card 5 */}
-          <div className="bg-ct-card border border-ct-border p-6 rounded-2xl space-y-4 hover:border-violet-500/40 hover:shadow-lg transition-all duration-300">
+          <div className="bg-ct-card border border-ct-border p-6 rounded-2xl space-y-4 hover:border-violet-500/30 hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
             <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center text-violet-500">
               <ShieldCheck className="w-5 h-5" />
             </div>
-            <h3 className="text-lg font-bold">Proxy Prevention & Security</h3>
+            <h3 className="text-base font-bold text-ct-text">Anti-Proxy Protection</h3>
             <p className="text-ct-muted text-xs leading-relaxed">
-              ClassTrack logs student IP addresses, browser info, and device details, alongside high-accuracy GPS coordinates to prevent proxy attendance logging.
+              Records student IP addresses, user agent strings, browser models, and high-accuracy GPS states to stop location-faking and proxy check-ins.
             </p>
           </div>
 
-          {/* Card 6 */}
-          <div className="bg-ct-card border border-ct-border p-6 rounded-2xl space-y-4 hover:border-violet-500/40 hover:shadow-lg transition-all duration-300">
+          <div className="bg-ct-card border border-ct-border p-6 rounded-2xl space-y-4 hover:border-violet-500/30 hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
             <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center text-violet-500">
               <Server className="w-5 h-5" />
             </div>
-            <h3 className="text-lg font-bold">Attendance Analytics</h3>
+            <h3 className="text-base font-bold text-ct-text">Robust Cloud Readiness</h3>
             <p className="text-ct-muted text-xs leading-relaxed">
-              Examine live metrics on student engagement, average durations, and export attendance records cleanly as a CSV file for classroom grading systems.
+              Fully optimized for platforms like Vercel and Neon Serverless PostgreSQL. Active client-polling fallback guarantees synchronization when websockets drop.
             </p>
           </div>
+
         </div>
       </section>
 
-      {/* Workflow Section */}
-      <section id="workflow" className="px-6 md:px-12 py-20 border-t border-ct-border bg-ct-card-solid/20 max-w-6xl mx-auto space-y-16">
-        <div className="text-center space-y-3">
-          <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">How it Works</h2>
-          <p className="text-ct-muted text-sm max-w-lg mx-auto">
-            A simple 4-step sequence built for modern hybrid classrooms.
+      {/* Classroom Workflow Section */}
+      <section id="workflow" className="px-6 md:px-12 py-20 border-t border-ct-border bg-ct-card-solid/10 max-w-7xl mx-auto">
+        <div className="text-center space-y-3 max-w-xl mx-auto mb-16">
+          <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-violet-500/10 text-violet-500 mb-1">
+            <TrendingUp className="w-5 h-5" />
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">How ClassTrack Works</h2>
+          <p className="text-ct-muted text-sm">
+            Educators and students interact seamlessly to authenticate presence.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 relative">
-          {/* Step 1 */}
-          <div className="relative space-y-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-650 to-indigo-650 flex items-center justify-center font-bold text-white shadow-md text-sm">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 relative">
+          
+          <div className="space-y-3.5 relative z-10 group">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-650 flex items-center justify-center font-extrabold text-white shadow-md text-sm transition-transform group-hover:scale-110 duration-200">
               1
             </div>
-            <h4 className="font-bold text-sm sm:text-base">Setup Session</h4>
+            <h4 className="font-bold text-base text-ct-text">Setup Geofence</h4>
             <p className="text-ct-muted text-xs leading-relaxed">
-              The instructor logs in, sets the classroom coordinates, adjust geofence radius, and launches the active tracking session.
+              Launch the teacher dashboard, choose classroom coordinates, customize radius scale, and generate the session.
             </p>
           </div>
 
-          {/* Step 2 */}
-          <div className="relative space-y-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-650 to-indigo-650 flex items-center justify-center font-bold text-white shadow-md text-sm">
+          <div className="space-y-3.5 relative z-10 group">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-violet-650 to-indigo-650 flex items-center justify-center font-extrabold text-white shadow-md text-sm transition-transform group-hover:scale-110 duration-200">
               2
             </div>
-            <h4 className="font-bold text-sm sm:text-base">Scan QR Access</h4>
+            <h4 className="font-bold text-base text-ct-text">Scan QR Ticket</h4>
             <p className="text-ct-muted text-xs leading-relaxed">
-              A dynamic QR code is projected in class or shared. Students scan the QR code to access the secure classroom check-in.
+              Project the dynamic session QR code in the classroom. Students scan it using their mobile browsers to access check-in.
             </p>
           </div>
 
-          {/* Step 3 */}
-          <div className="relative space-y-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-650 to-indigo-650 flex items-center justify-center font-bold text-white shadow-md text-sm">
+          <div className="space-y-3.5 relative z-10 group">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-violet-650 to-indigo-650 flex items-center justify-center font-extrabold text-white shadow-md text-sm transition-transform group-hover:scale-110 duration-200">
               3
             </div>
-            <h4 className="font-bold text-sm sm:text-base">Verify Location</h4>
+            <h4 className="font-bold text-base text-ct-text">Validate GPS</h4>
             <p className="text-ct-muted text-xs leading-relaxed">
-              The student inputs registration info, accepts the geolocation onboarding check, and enables live browser tracking.
+              Students view a location privacy consent screen, accept access, and begin background GPS coordinate validation.
             </p>
           </div>
 
-          {/* Step 4 */}
-          <div className="relative space-y-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-650 to-indigo-650 flex items-center justify-center font-bold text-white shadow-md text-sm">
+          <div className="space-y-3.5 relative z-10 group">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-violet-650 to-indigo-650 flex items-center justify-center font-extrabold text-white shadow-md text-sm transition-transform group-hover:scale-110 duration-200">
               4
             </div>
-            <h4 className="font-bold text-sm sm:text-base">Monitor Live Map</h4>
+            <h4 className="font-bold text-base text-ct-text">Real-Time Log</h4>
             <p className="text-ct-muted text-xs leading-relaxed">
-              The dashboard maps students and tracks boundaries. Status markers update live if a device disconnects or wanders.
+              Instructors monitor check-ins live on maps. If a student leaves the geofence boundary, system alerts sound immediately.
             </p>
           </div>
+
         </div>
       </section>
 
-      {/* Benefits Grid */}
-      <section id="benefits" className="px-6 md:px-12 py-20 border-t border-ct-border max-w-5xl mx-auto space-y-12">
-        <h2 className="text-center text-2xl sm:text-3xl font-extrabold tracking-tight">Why Educators Choose ClassTrack</h2>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
-          <div className="flex gap-4">
-            <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-            <div>
-              <h4 className="font-bold text-sm sm:text-base">99.9% Geofence Precision</h4>
-              <p className="text-ct-muted text-xs leading-relaxed mt-1">
-                Our client-side coordinate filters filter GPS noise, smoothing coordinates inside deep structures to avoid false-left alarms.
-              </p>
-            </div>
+      {/* Frequently Asked Questions */}
+      <section id="faq" className="px-6 md:px-12 py-20 border-t border-ct-border max-w-4xl mx-auto space-y-12">
+        <div className="text-center space-y-3">
+          <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-violet-500/10 text-violet-500 mb-1">
+            <HelpCircle className="w-5 h-5" />
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Frequently Asked Questions</h2>
+          <p className="text-ct-muted text-sm">
+            Answers to common questions about security, precision, and privacy.
+          </p>
+        </div>
+
+        <div className="space-y-4 pt-4 text-left">
+          
+          <div className="bg-ct-card border border-ct-border rounded-2xl overflow-hidden transition-all duration-300">
+            <button
+              onClick={() => setActiveFaq(activeFaq === 0 ? null : 0)}
+              className="w-full flex items-center justify-between p-5 text-sm font-bold text-ct-text cursor-pointer hover:bg-ct-card-solid/40 text-left"
+            >
+              <span>How precise is student location tracking?</span>
+              <X className={`w-4 h-4 text-ct-muted transition-transform duration-300 ${activeFaq === 0 ? 'rotate-45 text-violet-500' : ''}`} />
+            </button>
+            {activeFaq === 0 && (
+              <div className="p-5 pt-0 text-xs text-ct-muted border-t border-ct-border/40 leading-relaxed font-normal bg-ct-bg/30">
+                ClassTrack implements a client-side geolocation moving-average filter. It takes the last 3 GPS coordinate signals and ignores readings with precision issues worse than 60 meters. This suppresses cellular fallback noise and prevents false outside-geofence events inside lecture halls.
+              </div>
+            )}
           </div>
 
-          <div className="flex gap-4">
-            <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-            <div>
-              <h4 className="font-bold text-sm sm:text-base">Zero-Installation Client</h4>
-              <p className="text-ct-muted text-xs leading-relaxed mt-1">
-                Students join, register, and transmit coordinate packages directly from standard Safari or Chrome browsers. Zero installs.
-              </p>
-            </div>
+          <div className="bg-ct-card border border-ct-border rounded-2xl overflow-hidden transition-all duration-300">
+            <button
+              onClick={() => setActiveFaq(activeFaq === 1 ? null : 1)}
+              className="w-full flex items-center justify-between p-5 text-sm font-bold text-ct-text cursor-pointer hover:bg-ct-card-solid/40 text-left"
+            >
+              <span>Does the app track students when they are not in class?</span>
+              <X className={`w-4 h-4 text-ct-muted transition-transform duration-300 ${activeFaq === 1 ? 'rotate-45 text-violet-500' : ''}`} />
+            </button>
+            {activeFaq === 1 && (
+              <div className="p-5 pt-0 text-xs text-ct-muted border-t border-ct-border/40 leading-relaxed font-normal bg-ct-bg/30">
+                No. Student privacy is a top priority. Coordinates are only measured and transmitted when the student actively registers and maintains the tracking session tab open on their browser. Closing the tab or expiration of the teacher's session stops location checks instantly.
+              </div>
+            )}
           </div>
 
-          <div className="flex gap-4">
-            <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-            <div>
-              <h4 className="font-bold text-sm sm:text-base">Comprehensive Audit Records</h4>
-              <p className="text-ct-muted text-xs leading-relaxed mt-1">
-                Log user agents, device contexts, IP records, and location histories to keep attendance records fully audit-compliant and secure.
-              </p>
-            </div>
+          <div className="bg-ct-card border border-ct-border rounded-2xl overflow-hidden transition-all duration-300">
+            <button
+              onClick={() => setActiveFaq(activeFaq === 2 ? null : 2)}
+              className="w-full flex items-center justify-between p-5 text-sm font-bold text-ct-text cursor-pointer hover:bg-ct-card-solid/40 text-left"
+            >
+              <span>What if a student does not have internet connection in class?</span>
+              <X className={`w-4 h-4 text-ct-muted transition-transform duration-300 ${activeFaq === 2 ? 'rotate-45 text-violet-500' : ''}`} />
+            </button>
+            {activeFaq === 2 && (
+              <div className="p-5 pt-0 text-xs text-ct-muted border-t border-ct-border/40 leading-relaxed font-normal bg-ct-bg/30">
+                ClassTrack requires cellular data or campus Wi-Fi access to send heartbeats and communicate with the server. If a student loses connectivity, the system will highlight the student connection status as offline in the teacher dashboard map and resume sync once reconnection succeeds.
+              </div>
+            )}
           </div>
 
-          <div className="flex gap-4">
-            <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-            <div>
-              <h4 className="font-bold text-sm sm:text-base">Vercel & Neon Production Ready</h4>
-              <p className="text-ct-muted text-xs leading-relaxed mt-1">
-                Engineered with database retries and WebSocket fallbacks, ensuring robust, serverless operation in cloud hosting environments.
-              </p>
-            </div>
+          <div className="bg-ct-card border border-ct-border rounded-2xl overflow-hidden transition-all duration-300">
+            <button
+              onClick={() => setActiveFaq(activeFaq === 3 ? null : 3)}
+              className="w-full flex items-center justify-between p-5 text-sm font-bold text-ct-text cursor-pointer hover:bg-ct-card-solid/40 text-left"
+            >
+              <span>Does this support serverless cloud hosting like Vercel?</span>
+              <X className={`w-4 h-4 text-ct-muted transition-transform duration-300 ${activeFaq === 3 ? 'rotate-45 text-violet-500' : ''}`} />
+            </button>
+            {activeFaq === 3 && (
+              <div className="p-5 pt-0 text-xs text-ct-muted border-t border-ct-border/40 leading-relaxed font-normal bg-ct-bg/30">
+                Yes. Serverless hosting providers like Vercel do not support long-lived WebSocket connections natively. To accommodate this, ClassTrack V2 includes an automated HTTP fallback polling script that fetches student list updates and maps coordinates every 5 seconds, maintaining smooth operations.
+              </div>
+            )}
           </div>
+
         </div>
       </section>
 
@@ -390,7 +598,7 @@ export default function Home() {
           <span className="font-bold text-ct-text">ClassTrack V2</span>
         </div>
         <div>
-          &copy; {new Date().getFullYear()} ClassTrack. All rights reserved. Made for portfolio presentation.
+          &copy; {new Date().getFullYear()} ClassTrack. All rights reserved. Designed for academic portfolio presentation.
         </div>
       </footer>
 
@@ -403,7 +611,7 @@ export default function Home() {
               onClick={() => setIsAuthModalOpen(false)}
               className="absolute top-4 right-4 p-1 hover:bg-ct-card text-ct-muted hover:text-ct-text rounded-lg transition-colors cursor-pointer"
             >
-              <User className="w-4 h-4" /> {/* Fallback standard close or X */}
+              <X className="w-4 h-4" />
             </button>
 
             <div className="text-center space-y-1">
