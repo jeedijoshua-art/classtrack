@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, runWithRetry } from '@/lib/db'
 import { verifyToken } from '@/lib/jwt'
 import { z } from 'zod'
 
@@ -34,9 +34,9 @@ export async function GET(request: NextRequest) {
 
     if (sessionId) {
       // Fetch details of specific session
-      const session = await db.session.findUnique({
+      const session = await runWithRetry(() => db.session.findUnique({
         where: { id: sessionId }
-      })
+      }))
 
       if (!session) {
         return NextResponse.json({ error: 'Session not found' }, { status: 404 })
@@ -52,10 +52,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const sessions = await db.session.findMany({
+    const sessions = await runWithRetry(() => db.session.findMany({
       where: { adminId: admin.id },
       orderBy: { createdAt: 'desc' }
-    })
+    }))
 
     return NextResponse.json({ sessions, admin: { name: admin.name, email: admin.email } })
   } catch (err: any) {
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
     const startTime = new Date()
     const endTime = new Date(startTime.getTime() + duration * 60 * 1000)
 
-    const session = await db.session.create({
+    const session = await runWithRetry(() => db.session.create({
       data: {
         adminId: admin.id,
         sessionName,
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
         endTime,
         isActive: true
       }
-    })
+    }))
 
     return NextResponse.json({ session })
   } catch (err: any) {
@@ -121,9 +121,9 @@ export async function PATCH(request: NextRequest) {
     const { id, radius, duration, endNow } = parsed.data
 
     // Verify session ownership
-    const existingSession = await db.session.findUnique({
+    const existingSession = await runWithRetry(() => db.session.findUnique({
       where: { id }
-    })
+    }))
 
     if (!existingSession || existingSession.adminId !== admin.id) {
       return NextResponse.json({ error: 'Session not found or forbidden' }, { status: 404 })
@@ -143,10 +143,10 @@ export async function PATCH(request: NextRequest) {
       updateData.endTime = new Date(baseTime + duration * 60 * 1000)
     }
 
-    const session = await db.session.update({
+    const session = await runWithRetry(() => db.session.update({
       where: { id },
       data: updateData
-    })
+    }))
 
     return NextResponse.json({ session })
   } catch (err: any) {
@@ -170,22 +170,22 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Verify session ownership
-    const existingSession = await db.session.findUnique({
+    const existingSession = await runWithRetry(() => db.session.findUnique({
       where: { id }
-    })
+    }))
 
     if (!existingSession || existingSession.adminId !== admin.id) {
       return NextResponse.json({ error: 'Session not found or forbidden' }, { status: 404 })
     }
 
     // Mark session as inactive and set end time to now
-    await db.session.update({
+    await runWithRetry(() => db.session.update({
       where: { id },
       data: {
         isActive: false,
         endTime: new Date()
       }
-    })
+    }))
 
     return NextResponse.json({ success: true })
   } catch (err: any) {

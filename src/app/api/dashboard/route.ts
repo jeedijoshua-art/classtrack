@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, runWithRetry } from '@/lib/db'
 import { verifyToken } from '@/lib/jwt'
 
 // GET: Fetch classroom monitoring metrics for dashboard initialization
@@ -19,20 +19,56 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Session ID is required' }, { status: 400 })
     }
 
+    // 0. Auto-detect and sweep inactive devices (> 30 seconds) to 'Offline'
+    const cutoff = new Date(Date.now() - 30000)
+    
+    // Locate students who haven't updated location for > 30 seconds
+    const offlineLocs = await runWithRetry(() => db.attendance.findMany({
+      where: {
+        sessionId,
+        status: { not: 'Offline' },
+        student: {
+          locationUpdate: {
+            lastSeen: { lt: cutoff }
+          }
+        }
+      }
+    }))
+
+    // Locate students who registered > 30s ago but never sent a location heartbeat
+    const offlineNoLocs = await runWithRetry(() => db.attendance.findMany({
+      where: {
+        sessionId,
+        status: { not: 'Offline' },
+        joinedAt: { lt: cutoff },
+        student: {
+          locationUpdate: null
+        }
+      }
+    }))
+
+    const allOfflineIds = [...offlineLocs.map(a => a.id), ...offlineNoLocs.map(a => a.id)]
+    if (allOfflineIds.length > 0) {
+      await runWithRetry(() => db.attendance.updateMany({
+        where: { id: { in: allOfflineIds } },
+        data: { status: 'Offline' }
+      }))
+    }
+
     // 1. Fetch Students
-    const students = await db.student.findMany({
+    const students = await runWithRetry(() => db.student.findMany({
       where: { sessionId }
-    })
+    }))
 
     // 2. Fetch Locations
-    const locations = await db.locationUpdate.findMany({
+    const locations = await runWithRetry(() => db.locationUpdate.findMany({
       where: { sessionId }
-    })
+    }))
 
     // 3. Fetch Attendance logs
-    const attendance = await db.attendance.findMany({
+    const attendance = await runWithRetry(() => db.attendance.findMany({
       where: { sessionId }
-    })
+    }))
 
     return NextResponse.json({
       admin: { name: admin.name, email: admin.email },

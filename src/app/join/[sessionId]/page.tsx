@@ -30,6 +30,20 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
 
   // Fetch session details on load
   useEffect(() => {
+    // Redirect if they are already checked in (found in localStorage)
+    const stored = localStorage.getItem(`classtrack_student_${sessionId}`)
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored)
+        if (parsed && parsed.id) {
+          router.push(`/track/${sessionId}?studentId=${parsed.id}`)
+          return
+        }
+      } catch (e) {
+        console.error('Failed to parse stored student info:', e)
+      }
+    }
+
     async function fetchSession() {
       try {
         const res = await fetch(`/api/sessions?id=${sessionId}`)
@@ -57,7 +71,7 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
     if (sessionId) {
       fetchSession()
     }
-  }, [sessionId])
+  }, [sessionId, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -248,6 +262,20 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
               </div>
             </form>
           )}
+          
+          {/* Network connection details for student devices */}
+          <div className="bg-zinc-950/40 border border-zinc-800/50 rounded-xl p-4 mt-4 space-y-2 text-[10px] text-zinc-400">
+            <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider text-zinc-400 border-b border-zinc-800/50 pb-2 mb-1">
+              <span>Network Status</span>
+              <span className="text-emerald-400 font-bold">🟢 Online</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Server Host:</span>
+              <span className="font-mono text-white font-semibold">
+                {typeof window !== 'undefined' ? window.location.host : 'Detecting...'}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

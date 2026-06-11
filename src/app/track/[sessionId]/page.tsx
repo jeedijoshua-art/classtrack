@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, use, Suspense } from 'react'
+import { useState, useEffect, useRef, use, Suspense, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Compass, ShieldAlert, ShieldCheck, MapPin, Radio, Bell, AlertTriangle } from 'lucide-react'
 import { io } from 'socket.io-client'
@@ -10,6 +10,13 @@ interface Student {
   name: string
   rollNumber: string
   department: string
+}
+
+// Geolocation standard configurations to maximize accuracy and speed up on mobile devices
+const geoOptions = {
+  enableHighAccuracy: true,
+  timeout: 15000, // 15 seconds to allow cold-start GPS sensors to acquire satellite lock
+  maximumAge: 2000 // allow slightly cached location (2s) to speed up response
 }
 
 function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }> }) {
@@ -28,31 +35,312 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
   const [distance, setDistance] = useState<number | null>(null)
   const [radius, setRadius] = useState<number | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [socketConnected, setSocketConnected] = useState(false)
+
+  // Diagnostics states
+  const [isInsecureContext, setIsInsecureContext] = useState(false)
+  const [permissionState, setPermissionState] = useState<string>('checking')
+  const [gpsError, setGpsError] = useState<{ code: number; message: string; codeString: string } | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
+  const [deviceDetails, setDeviceDetails] = useState<string>('Detecting...')
+  const [currentUrl, setCurrentUrl] = useState<string>('Detecting...')
+
+  // Triggers and refs for clean watch recovery
+  const [watchTrigger, setWatchTrigger] = useState(0)
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  const handleRetry = useCallback(() => {
+    console.log('[Geolocation manual retry] Resetting watchTrigger and clearing errors...')
+    setError(null)
+    setGpsError(null)
+    setRetryCount(0)
+    setTrackingStatus('prompting')
+    setPermissionState('checking')
+    setWatchTrigger((prev) => prev + 1)
+  }, [])
+
+  // Create refs to prevent hook dependencies from triggering watchPosition teardown/recreation loops
+  const studentRef = useRef(student)
+  const sessionIdRef = useRef(sessionId)
+  const trackingStatusRef = useRef(trackingStatus)
+  const permissionStateRef = useRef(permissionState)
+
+  useEffect(() => { studentRef.current = student }, [student])
+  useEffect(() => { sessionIdRef.current = sessionId }, [sessionId])
+  useEffect(() => { trackingStatusRef.current = trackingStatus }, [trackingStatus])
+  useEffect(() => { permissionStateRef.current = permissionState }, [permissionState])
+
+  // Unified logging/instrumentation helper
+  const logGeolocationStatus = useCallback(async (action: string, details: string) => {
+    let perm = 'unknown'
+    if (typeof window !== 'undefined' && navigator.permissions && navigator.permissions.query) {
+      try {
+        const status = await navigator.permissions.query({ name: 'geolocation' as any })
+        perm = status.state
+      } catch (e) {}
+    } else {
+      perm = 'unsupported (Safari/iOS)'
+    }
+    console.log(`[Geolocation Instrumentation] Action: ${action} | Permission State: ${perm} | Secure Context: ${typeof window !== 'undefined' ? window.isSecureContext : 'N/A'} | Origin URL: ${typeof window !== 'undefined' ? window.location.href : 'N/A'} | Details: ${details}`)
+  }, [])
+
+  // Detect device context, permission status, and URL on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    setIsInsecureContext(!window.isSecureContext)
+    setCurrentUrl(window.location.href)
+
+    // Parse friendly browser and device information
+    const ua = navigator.userAgent
+    let browser = 'Unknown Browser'
+    let device = 'Desktop'
+
+    if (/chrome|cros/i.test(ua)) {
+      browser = 'Chrome'
+    } else if (/safari/i.test(ua) && !/chrome/i.test(ua)) {
+      browser = 'Safari'
+    } else if (/firefox/i.test(ua)) {
+      browser = 'Firefox'
+    }
+
+    if (/mobi|android|iphone|ipad|ipod/i.test(ua)) {
+      device = /ipad|tablet/i.test(ua) ? 'Tablet' : 'Mobile'
+      if (/iphone/i.test(ua)) {
+        device = 'iPhone'
+      }
+    }
+    
+    setDeviceDetails(`${browser} (${device})`)
+
+    const updatePermission = () => {
+      if (navigator.permissions && navigator.permissions.query) {
+        try {
+          navigator.permissions.query({ name: 'geolocation' as any }).then((status) => {
+            console.log('[Geolocation Permissions API] Status:', status.state)
+            setPermissionState(status.state)
+            status.onchange = () => {
+              console.log('[Geolocation Permissions API Status Changed]:', status.state)
+              setPermissionState(status.state)
+            }
+          }).catch((e) => {
+            console.log('[Geolocation Permissions Query Failed]', e)
+            setPermissionState('unknown')
+          })
+        } catch (e) {
+          setPermissionState('unknown')
+        }
+      } else {
+        setPermissionState('unsupported')
+      }
+    }
+
+    updatePermission()
+  }, [])
+
+  // Listen for window focus to automatically recheck permissions and retry tracking
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const handleFocus = () => {
+      console.log('[Window Focus] Automatically rechecking permissions and retrying tracking if needed...')
+      if (navigator.permissions && navigator.permissions.query) {
+        navigator.permissions.query({ name: 'geolocation' as any }).then((status) => {
+          setPermissionState(status.state)
+          if (status.state === 'granted' && trackingStatusRef.current === 'error') {
+            console.log('[Window Focus] Geolocation permission granted, auto-retrying...')
+            handleRetry()
+          }
+        }).catch(() => {})
+      }
+      
+      if (trackingStatusRef.current === 'error') {
+        console.log('[Window Focus] Tracking is in error state, auto-triggering retry...')
+        handleRetry()
+      }
+    }
+
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+  }, [handleRetry])
 
   // Notification states
   const [notificationPermission, setNotificationPermission] = useState<string>('default')
+  const [inAppNotification, setInAppNotification] = useState<{ message: string; type: 'success' | 'warning' } | null>(null)
   
-  // Watcher ref
-  const watchIdRef = useRef<number | null>(null)
+  // Watcher/Alert refs
   const alertIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const socketRef = useRef<any>(null)
+  const prevInsideRef = useRef<boolean | null>(null)
 
-  // Socket.io room connection setup
-  useEffect(() => {
-    socketRef.current = io()
-    socketRef.current.emit('join-room', sessionId)
-    
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect()
-      }
+  const triggerInAppNotification = (message: string, type: 'success' | 'warning') => {
+    setInAppNotification({ message, type })
+    setTimeout(() => {
+      setInAppNotification(null)
+    }, 6000)
+  }
+
+  // Callback to process successful geolocation updates
+  const handleSuccess = useCallback(async (position: GeolocationPosition) => {
+    const { latitude, longitude, accuracy } = position.coords
+    const currentStudent = studentRef.current
+    const currentSessionId = sessionIdRef.current
+
+    // Print exact requested GPS SUCCESS format
+    console.log(`GPS SUCCESS\nlat: ${latitude}\nlng: ${longitude}`)
+    logGeolocationStatus('SUCCESS_CALLBACK', `Lat: ${latitude}, Lng: ${longitude}, Acc: ${accuracy}m`)
+
+    setCoords({ lat: latitude, lng: longitude })
+    setTrackingStatus('tracking')
+    setGpsError(null) // Reset errors on successful location acquisition
+    setError(null) // Clear any previous error states
+    setPermissionState('granted') // Geolocation succeeded, so permission must be granted
+
+    if (!currentStudent) {
+      console.warn('[Geolocation Success Callback] Student identity not loaded yet. Ignoring POST heartbeat.')
+      return
     }
-  }, [sessionId])
 
-  // Emit student identity when loaded
+    try {
+      console.log(`[Geolocation API Request] Sending location to /api/location for student: ${currentStudent.id}, session: ${currentSessionId}`)
+      const res = await fetch('/api/location', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: currentStudent.id,
+          sessionId: currentSessionId,
+          latitude,
+          longitude
+        })
+      })
+
+      const data = await res.json()
+      console.log('[Geolocation API Response] Status:', res.status, 'Data:', data)
+      if (res.ok) {
+        setInsideRadius(data.insideRadius)
+        setDistance(data.distance)
+        setRadius(data.radius)
+        setLastUpdated(new Date())
+
+        // Emit location update over Socket.io
+        if (socketRef.current) {
+          socketRef.current.emit('location-update', {
+            roomId: currentSessionId,
+            location: {
+              student_id: currentStudent.id,
+              latitude,
+              longitude,
+              inside_radius: data.insideRadius,
+              last_seen: new Date().toISOString()
+            }
+          })
+        }
+      } else if (data.sessionEnded) {
+        setError('This classroom session has ended.')
+        setTrackingStatus('error')
+      }
+    } catch (err) {
+      console.error('[Geolocation Success Callback] Failed to post location update to backend:', err)
+    }
+  }, [logGeolocationStatus])
+
+  // Callback to handle geolocation tracking failures with automatic retry loops
+  const handleError = useCallback((error: GeolocationPositionError) => {
+    const codeString = 
+      error.code === error.PERMISSION_DENIED ? 'PERMISSION_DENIED' :
+      error.code === error.POSITION_UNAVAILABLE ? 'POSITION_UNAVAILABLE' :
+      error.code === error.TIMEOUT ? 'TIMEOUT' : 'UNKNOWN_ERROR';
+
+    // Print exact requested GPS ERROR format
+    console.error(`GPS ERROR\ncode: ${error.code}\nmessage: ${error.message}`)
+    logGeolocationStatus('ERROR_CALLBACK', `Code: ${error.code} (${codeString}), Message: ${error.message}`)
+    setGpsError({ code: error.code, message: error.message, codeString })
+
+    if (error.code === error.PERMISSION_DENIED) {
+      setPermissionState('denied')
+      setTrackingStatus('error')
+      setError(`Location access denied (Code: ${error.code} [${codeString}]). Message: ${error.message}. You must enable Location Permissions in your browser settings to log attendance. Make sure you access the site via HTTPS on mobile.`)
+    } else {
+      // Handle POSITION_UNAVAILABLE or TIMEOUT: Increment retry counter and schedule retry
+      setRetryCount((prev) => {
+        const nextRetry = prev + 1
+        if (nextRetry >= 5) {
+          setTrackingStatus('error')
+          setError(`Failed to retrieve coordinates after multiple attempts. Please ensure your device GPS is enabled and has a clear sky view. Error: ${error.message}`)
+        }
+        return nextRetry
+      })
+      
+      let errorHint = 'Retrying geolocation in 3 seconds...'
+      if (error.code === error.POSITION_UNAVAILABLE) {
+        errorHint = 'GPS position unavailable. Please ensure GPS/Location services are enabled on your device. Retrying...'
+      } else if (error.code === error.TIMEOUT) {
+        errorHint = 'GPS request timed out. Retrying to establish lock...'
+      }
+      
+      console.log(`[Geolocation Callback Error Handled] ${errorHint}`)
+      
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current)
+      }
+
+      // Auto-retry after 3 seconds by restarting watchPosition cleanly instead of concurrent getCurrentPosition requests
+      retryTimeoutRef.current = setTimeout(() => {
+        if (trackingStatusRef.current !== 'error') {
+          logGeolocationStatus('AUTO_RETRY_WATCH_RESTART', 'Restarting watchPosition for retry...')
+          setWatchTrigger((prev) => prev + 1)
+        }
+      }, 3000)
+    }
+  }, [logGeolocationStatus, handleSuccess])
+
+  // 1. Socket.IO connection and reconnect handling
   useEffect(() => {
-    if (student && socketRef.current) {
-      socketRef.current.emit('student-joined', {
+    if (!student || !sessionId) return
+
+    // Socket.io initialization with auto-reconnection parameters
+    socketRef.current = io({
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000
+    })
+
+    const socket = socketRef.current
+
+    const triggerLocationCheck = async () => {
+      if (!navigator.geolocation) return
+      logGeolocationStatus('SOCKET_TRIGGER_INIT', 'Starting getCurrentPosition...')
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          logGeolocationStatus('SOCKET_TRIGGER_SUCCESS', `Coords: ${position.coords.latitude}, ${position.coords.longitude}`)
+          handleSuccess(position)
+        },
+        (err) => {
+          const codeString = 
+            err.code === err.PERMISSION_DENIED ? 'PERMISSION_DENIED' :
+            err.code === err.POSITION_UNAVAILABLE ? 'POSITION_UNAVAILABLE' :
+            err.code === err.TIMEOUT ? 'TIMEOUT' : 'UNKNOWN_ERROR';
+          logGeolocationStatus('SOCKET_TRIGGER_ERROR', `Code: ${err.code} (${codeString}), Message: ${err.message}`)
+          handleError(err)
+        },
+        geoOptions
+      )
+    }
+
+    socket.on('connect', () => {
+      setSocketConnected(true)
+      console.log('[Socket] Connected, joining room:', sessionId)
+      socket.emit('join-room', sessionId)
+      socket.emit('student-joined', {
         roomId: sessionId,
         student: {
           id: student.id,
@@ -66,10 +354,29 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
           joinedAt: new Date().toISOString()
         }
       })
-    }
-  }, [student, sessionId])
+    })
 
-  // 1. Fetch student info from search param or localStorage
+    socket.on('disconnect', () => {
+      setSocketConnected(false)
+      console.log('[Socket] Disconnected from server')
+    })
+
+    // Listen for live radius adjustments from teacher
+    socket.on('radius-update', ({ radius }: { radius: number }) => {
+      setRadius(radius)
+      // Force trigger location update immediately on radius change
+      triggerLocationCheck()
+    })
+
+    return () => {
+      socket.off('connect')
+      socket.off('disconnect')
+      socket.off('radius-update')
+      socket.disconnect()
+    }
+  }, [student, sessionId, handleSuccess, handleError, logGeolocationStatus])
+
+  // 2. Fetch student info from search param or localStorage
   useEffect(() => {
     const studentIdParam = searchParams.get('studentId')
     let foundStudent: Student | null = null
@@ -123,7 +430,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     }
   }
 
-  // 2. Start geolocation tracking
+  // 3. Start geolocation tracking using watchPosition
   useEffect(() => {
     if (!student || !sessionId) return
 
@@ -133,126 +440,87 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
       return
     }
 
-    const handleSuccess = async (position: GeolocationPosition) => {
-      const { latitude, longitude } = position.coords
-      setCoords({ lat: latitude, lng: longitude })
-      setTrackingStatus('tracking')
-
-      try {
-        const res = await fetch('/api/location', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            studentId: student.id,
-            sessionId: sessionId,
-            latitude,
-            longitude
-          })
-        })
-
-        const data = await res.json()
-        if (res.ok) {
-          setInsideRadius(data.insideRadius)
-          setDistance(data.distance)
-          setRadius(data.radius)
-          setLastUpdated(new Date())
-
-          // Emit location update over Socket.io
-          if (socketRef.current) {
-            socketRef.current.emit('location-update', {
-              roomId: sessionId,
-              location: {
-                student_id: student.id,
-                latitude,
-                longitude,
-                inside_radius: data.insideRadius,
-                last_seen: new Date().toISOString()
-              }
-            })
-          }
-        } else if (data.sessionEnded) {
-          setError('This classroom session has ended.')
-          setTrackingStatus('error')
-          stopTracking()
-        }
-      } catch (err) {
-        console.error('Failed to post location update:', err)
-      }
-    }
-
-    const handleError = (error: GeolocationPositionError) => {
-      setTrackingStatus('error')
-      switch (error.code) {
-        case error.PERMISSION_DENIED:
-          setError('Location access denied. You must enable Location Permissions in your browser settings to log attendance.')
-          break
-        case error.POSITION_UNAVAILABLE:
-          setError('Location information is unavailable.')
-          break
-        case error.TIMEOUT:
-          setError('The request to get user location timed out.')
-          break
-        default:
-          setError('An unknown error occurred while getting location.')
-          break
-      }
-    }
-
-    // High accuracy option is crucial for classroom radius (meter level precision)
-    const options = {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 0
-    }
-
+    console.log(`[Geolocation] Initializing watchPosition listener (trigger: ${watchTrigger})...`)
+    logGeolocationStatus('WATCH_INIT', `Calling watchPosition (trigger: ${watchTrigger})...`)
     setTrackingStatus('prompting')
-    watchIdRef.current = navigator.geolocation.watchPosition(handleSuccess, handleError, options)
+    
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        logGeolocationStatus('WATCH_CALLBACK_SUCCESS', `Coords: ${position.coords.latitude}, ${position.coords.longitude}`)
+        handleSuccess(position)
+      },
+      (err) => {
+        const codeString = 
+          err.code === err.PERMISSION_DENIED ? 'PERMISSION_DENIED' :
+          err.code === err.POSITION_UNAVAILABLE ? 'POSITION_UNAVAILABLE' :
+          err.code === err.TIMEOUT ? 'TIMEOUT' : 'UNKNOWN_ERROR';
+        logGeolocationStatus('WATCH_CALLBACK_ERROR', `Code: ${err.code} (${codeString}), Message: ${err.message}`)
+        handleError(err)
+      },
+      geoOptions
+    )
 
-    // Fallback heartbeat interval in case watchPosition suspends
-    const heartbeat = setInterval(() => {
-      navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options)
-    }, 8000)
-
-    function stopTracking() {
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current)
-      }
-      clearInterval(heartbeat)
-    }
+    console.log('[Geolocation] watchPosition active with watchId =', watchId)
 
     return () => {
-      stopTracking()
+      console.log('[Geolocation] Cleaning up watchPosition. ID:', watchId)
+      navigator.geolocation.clearWatch(watchId)
     }
-  }, [student, sessionId])
+  }, [student, sessionId, handleSuccess, handleError, logGeolocationStatus, watchTrigger])
 
-  // 3. Coordinate tab alerts and push notifications on geofence violation
+
+  // 4. Coordinate tab alerts, browser push, and in-app notifications on geofence transitions
   useEffect(() => {
-    // If student goes outside radius
+    if (insideRadius === null) return
+
+    // 1. Blinking tab title when outside
     if (insideRadius === false) {
-      // Blinking tab title
       let toggle = false
       alertIntervalRef.current = setInterval(() => {
         document.title = toggle ? '⚠️ OUTSIDE BOUNDARY!' : 'ClassTrack Status'
         toggle = !toggle
       }, 1000)
-
-      // Send browser push notification if permission is granted
-      if (notificationPermission === 'granted') {
-        new Notification('ClassTrack Alert', {
-          body: 'You are outside the classroom boundary. Please return.',
-          icon: '/favicon.ico',
-          tag: 'classtrack-geofence',
-          requireInteraction: true
-        })
-      }
     } else {
-      // Clear blinking tab title
       if (alertIntervalRef.current) {
         clearInterval(alertIntervalRef.current)
         alertIntervalRef.current = null
       }
       document.title = 'ClassTrack Checked-In'
     }
+
+    // 2. State transition notifications (in-app + push)
+    if (prevInsideRef.current !== null && prevInsideRef.current !== insideRadius) {
+      if (!insideRadius) {
+        triggerInAppNotification('You are outside the classroom boundary. Please return.', 'warning')
+        if (notificationPermission === 'granted') {
+          try {
+            new Notification('ClassTrack Alert', {
+              body: 'You are outside the classroom boundary. Please return.',
+              icon: '/favicon.ico',
+              tag: 'classtrack-geofence',
+              requireInteraction: true
+            })
+          } catch (e) {
+            console.error('Failed to send push notification:', e)
+          }
+        }
+      } else {
+        triggerInAppNotification('You are back inside the classroom boundary.', 'success')
+        if (notificationPermission === 'granted') {
+          try {
+            new Notification('ClassTrack Alert', {
+              body: 'You are back inside the classroom boundary.',
+              icon: '/favicon.ico',
+              tag: 'classtrack-geofence'
+            })
+          } catch (e) {
+            console.error('Failed to send push notification:', e)
+          }
+        }
+      }
+    }
+
+    prevInsideRef.current = insideRadius
 
     return () => {
       if (alertIntervalRef.current) {
@@ -267,9 +535,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     if (!student || !sessionId) return
 
     const handleVisibilityChange = () => {
-      // If student minimizes or leaves, keep background tracking going.
-      // But we can't reliably call async API inside unload/beforeunload on mobile,
-      // which is why the admin dashboard relies on our 15s last_seen timestamp logic!
+      // Keep background tracking going.
     }
 
     window.addEventListener('visibilitychange', handleVisibilityChange)
@@ -287,7 +553,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     )
   }
 
-  if (error && trackingStatus === 'error') {
+  if (!student) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-zinc-950 font-sans p-4">
         <div className="w-full max-w-md bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-8 text-center space-y-6 backdrop-blur-xl">
@@ -295,14 +561,14 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
             <ShieldAlert className="w-8 h-8" />
           </div>
           <div className="space-y-2">
-            <h3 className="text-xl font-bold text-white">Tracking Stopped</h3>
-            <p className="text-zinc-400 text-sm">{error}</p>
+            <h3 className="text-xl font-bold text-white">Identity Error</h3>
+            <p className="text-zinc-400 text-sm">{error || 'Student identity not found. Please scan the QR code to sign in again.'}</p>
           </div>
           <button
             onClick={() => window.location.reload()}
             className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-bold transition-all text-sm cursor-pointer"
           >
-            Retry Location Access
+            Retry Identity Access
           </button>
         </div>
       </div>
@@ -311,6 +577,18 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
 
   return (
     <div className="relative min-h-screen w-full flex items-center justify-center bg-zinc-950 font-sans overflow-hidden py-12 px-4 sm:px-6 lg:px-8">
+      {/* In-App Toast Banner */}
+      {inAppNotification && (
+        <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[2000] flex items-center gap-2.5 px-4 py-3 rounded-xl border backdrop-blur-md shadow-xl text-xs font-semibold animate-in fade-in slide-in-from-top duration-200 ${
+          inAppNotification.type === 'success' 
+            ? 'bg-emerald-950/90 border-emerald-900/60 text-emerald-200' 
+            : 'bg-amber-950/90 border-amber-900/60 text-amber-200'
+        }`}>
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          <span>{inAppNotification.message}</span>
+        </div>
+      )}
+
       {/* Background radial highlights */}
       {insideRadius === false ? (
         <div className="absolute inset-0 bg-red-950/10 transition-colors duration-500 animate-pulse pointer-events-none" />
@@ -337,7 +615,37 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
         <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-800/80 rounded-2xl shadow-2xl p-8 space-y-6">
           
           {/* Geofence Status Indicator */}
-          {insideRadius === null ? (
+          {isInsecureContext && (
+            <div className="flex flex-col gap-2 p-4 rounded-xl bg-red-950/30 border border-red-900/40 text-red-200 text-xs text-left">
+              <div className="flex items-center gap-2 font-bold text-red-400">
+                <ShieldAlert className="w-4 h-4 flex-shrink-0" />
+                <span>Insecure Connection Warning</span>
+              </div>
+              <p className="text-zinc-300 leading-relaxed font-sans">
+                Mobile web browsers block Geolocation on plain HTTP. Please access this page over **HTTPS**, or check the diagnostics panel below on how to register your IP address as secure.
+              </p>
+            </div>
+          )}
+
+          {trackingStatus === 'error' && error ? (
+            <div className="flex flex-col items-center py-6 text-center space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-red-950/30 border border-red-900/40 flex items-center justify-center text-red-400 mx-auto">
+                <ShieldAlert className="w-8 h-8" />
+              </div>
+              <div className="space-y-3 w-full">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold text-red-500">Tracking Stopped</h3>
+                  <p className="text-zinc-300 text-xs px-2 leading-relaxed font-sans">{error}</p>
+                </div>
+                <button
+                  onClick={handleRetry}
+                  className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-bold transition-all text-xs cursor-pointer"
+                >
+                  Retry Location Access
+                </button>
+              </div>
+            </div>
+          ) : insideRadius === null ? (
             <div className="flex flex-col items-center py-6 text-center space-y-4">
               <div className="w-16 h-16 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-center text-zinc-500 animate-pulse">
                 <Compass className="w-8 h-8 rotate-45" />
@@ -411,6 +719,176 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
                 )}
               </div>
             )}
+
+            {/* Environment-agnostic network connection details for student devices */}
+            <div className="bg-zinc-950/40 border border-zinc-800/50 rounded-xl p-4 space-y-2.5">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-zinc-400 border-b border-zinc-800/50 pb-2">
+                <span>Network Status</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 ${
+                  socketConnected 
+                    ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-900/30' 
+                    : 'bg-rose-950/60 text-rose-400 border border-rose-900/30'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${socketConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+                  {socketConnected ? 'Connected' : 'Disconnected'}
+                </span>
+              </div>
+              <div className="text-[10px] space-y-1.5 text-zinc-400">
+                <div className="flex justify-between items-center">
+                  <span>Server Host:</span>
+                  <span className="font-mono text-white font-semibold">
+                    {typeof window !== 'undefined' ? window.location.hostname : 'Detecting...'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span>Port:</span>
+                  <span className="font-mono text-white font-semibold">
+                    {typeof window !== 'undefined' ? (window.location.port || (window.location.protocol === 'https:' ? '443' : '80')) : '...'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span>Access Mode:</span>
+                  <span className="text-violet-400 font-semibold uppercase">
+                    {typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || /^172\./.test(window.location.hostname) || /^192\./.test(window.location.hostname) || /^10\./.test(window.location.hostname))
+                      ? 'Local Network (LAN)'
+                      : 'Cloud (Public HTTPS)'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Always Visible Diagnostics Debug Panel */}
+          <div className="bg-zinc-950/60 border border-zinc-800/80 rounded-xl p-4 mt-4 space-y-3 text-[11px] text-zinc-400 text-left font-mono">
+            <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider text-zinc-400 border-b border-zinc-800/50 pb-2 mb-1 font-sans">
+              <span>GPS & Geolocation Debug</span>
+              <span className="text-emerald-400 text-[10px] animate-pulse">● Active Debug</span>
+            </div>
+            
+            <div className="space-y-1.5">
+              <div className="flex justify-between">
+                <span>Permission State:</span>
+                <span className={`font-bold ${
+                  permissionState === 'granted' ? 'text-emerald-400' :
+                  permissionState === 'denied' ? 'text-rose-400' : 'text-amber-400'
+                }`}>
+                  {permissionState.toUpperCase()}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span>GPS Status:</span>
+                <span className={gpsError ? 'text-rose-400 font-bold' : coords ? 'text-emerald-400' : 'text-zinc-500'}>
+                  {gpsError ? `ERROR (${gpsError.codeString})` : coords ? 'ACTIVE_TRACKING' : 'ACQUIRING'}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span>Latitude:</span>
+                <span className="text-white font-semibold">
+                  {coords ? coords.lat.toFixed(6) : 'N/A'}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span>Longitude:</span>
+                <span className="text-white font-semibold">
+                  {coords ? coords.lng.toFixed(6) : 'N/A'}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span>Last Update Time:</span>
+                <span className="text-white font-semibold">
+                  {lastUpdated ? lastUpdated.toLocaleTimeString() : 'N/A'}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span>Error Code:</span>
+                <span className={gpsError ? 'text-rose-400 font-bold' : 'text-white'}>
+                  {gpsError ? gpsError.code : 'NONE'}
+                </span>
+              </div>
+
+              <div className="flex justify-between border-b border-zinc-800/50 pb-2 mb-1">
+                <span>Error Message:</span>
+                <span className="text-white truncate max-w-[200px]" title={gpsError ? gpsError.message : 'NONE'}>
+                  {gpsError ? gpsError.message : 'NONE'}
+                </span>
+              </div>
+
+              {/* Extra device context details */}
+              <div className="text-[10px] space-y-1 text-zinc-500 pt-1">
+                <div className="flex justify-between">
+                  <span>Secure Context:</span>
+                  <span>{isInsecureContext ? 'NO (HTTP)' : 'YES'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Origin URL:</span>
+                  <span className="truncate max-w-[200px]">{currentUrl}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Device/Browser:</span>
+                  <span>{deviceDetails}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Retry Count:</span>
+                  <span>{retryCount}</span>
+                </div>
+              </div>
+
+              {gpsError && isInsecureContext && (
+                <div className="bg-rose-950/20 border border-rose-900/40 rounded p-2 text-[10px] text-rose-300 font-sans space-y-1 mt-1">
+                  <div className="font-bold text-rose-400">⚠️ Insecure Context Bypass Guidelines:</div>
+                  <div className="leading-relaxed border-t border-rose-900/20 pt-1 mt-1">
+                    • **Android/Chrome:** Visit <code className="bg-zinc-900 px-1 py-0.5 rounded text-white select-all">chrome://flags/#unsafely-treat-insecure-origin-as-secure</code>, enable, enter <code className="bg-zinc-900 px-1 py-0.5 rounded text-white select-all">{currentUrl.split('/track')[0]}</code>, and relaunch Chrome.
+                  </div>
+                  <div className="leading-relaxed">
+                    • **iPhone/Safari:** iOS Safari blocks HTTP geolocation. You must run the dev server via HTTPS using an HTTPS tunnel (e.g. ngrok) or proxy.
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-2 font-sans">
+              <button
+                onClick={() => {
+                  setRetryCount(0)
+                  console.log('[Geolocation Manual Ping] Force querying getCurrentPosition...')
+                  logGeolocationStatus('MANUAL_PING_INIT', 'Starting getCurrentPosition...')
+                  navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                      logGeolocationStatus('MANUAL_PING_SUCCESS', `Coords: ${pos.coords.latitude}, ${pos.coords.longitude}`)
+                      handleSuccess(pos)
+                    },
+                    (err) => {
+                      const codeString = 
+                        err.code === err.PERMISSION_DENIED ? 'PERMISSION_DENIED' :
+                        err.code === err.POSITION_UNAVAILABLE ? 'POSITION_UNAVAILABLE' :
+                        err.code === err.TIMEOUT ? 'TIMEOUT' : 'UNKNOWN_ERROR';
+                      logGeolocationStatus('MANUAL_PING_ERROR', `Code: ${err.code} (${codeString}), Message: ${err.message}`)
+                      handleError(err)
+                    },
+                    geoOptions
+                  )
+                }}
+                className="flex-1 py-1.5 px-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded text-[10px] text-center font-bold cursor-pointer transition-colors"
+              >
+                Force GPS Ping
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm("Reset tracking profile and re-register?")) {
+                    localStorage.removeItem(`classtrack_student_${sessionId}`)
+                    router.push(`/join/${sessionId}`)
+                  }
+                }}
+                className="py-1.5 px-2 bg-red-950/20 hover:bg-red-950/40 text-red-400 border border-red-900/30 rounded text-[10px] text-center font-bold cursor-pointer transition-colors"
+              >
+                Reset Profile
+              </button>
+            </div>
           </div>
 
           {/* Browser Notification Request bar */}

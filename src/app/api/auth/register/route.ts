@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, runWithRetry } from '@/lib/db'
 import bcrypt from 'bcrypt'
 import { signToken } from '@/lib/jwt'
 import { z } from 'zod'
@@ -22,9 +22,9 @@ export async function POST(request: NextRequest) {
     const { name, email, password } = parsed.data
 
     // Verify unique email
-    const existing = await db.admin.findUnique({
+    const existing = await runWithRetry(() => db.admin.findUnique({
       where: { email }
-    })
+    }))
 
     if (existing) {
       return NextResponse.json({ error: 'Email already exists. Please login instead.' }, { status: 400 })
@@ -34,13 +34,13 @@ export async function POST(request: NextRequest) {
     const passwordHash = await bcrypt.hash(password, 10)
 
     // Save Admin
-    const admin = await db.admin.create({
+    const admin = await runWithRetry(() => db.admin.create({
       data: {
         name,
         email,
         passwordHash
       }
-    })
+    }))
 
     // Sign JWT authentication token
     const token = signToken({

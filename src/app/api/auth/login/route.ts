@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, runWithRetry } from '@/lib/db'
 import bcrypt from 'bcrypt'
 import { signToken } from '@/lib/jwt'
 import { z } from 'zod'
@@ -21,9 +21,9 @@ export async function POST(request: NextRequest) {
     const { email, password } = parsed.data
 
     // Fetch Admin profile
-    const admin = await db.admin.findUnique({
+    const admin = await runWithRetry(() => db.admin.findUnique({
       where: { email }
-    })
+    }))
 
     if (!admin) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 400 })

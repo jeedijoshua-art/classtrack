@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, runWithRetry } from '@/lib/db'
 import { getDistanceInMeters } from '@/lib/geoutils'
 import { z } from 'zod'
 
@@ -23,9 +23,9 @@ export async function POST(request: NextRequest) {
     const { studentId, sessionId, latitude, longitude } = parsed.data
 
     // 1. Fetch classroom coordinates
-    const session = await db.session.findUnique({
+    const session = await runWithRetry(() => db.session.findUnique({
       where: { id: sessionId }
-    })
+    }))
 
     if (!session) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 })
@@ -35,10 +35,10 @@ export async function POST(request: NextRequest) {
     const isExpired = new Date(session.endTime).getTime() < Date.now() || !session.isActive
     if (isExpired) {
       // Mark student offline in the attendance table
-      await db.attendance.updateMany({
+      await runWithRetry(() => db.attendance.updateMany({
         where: { sessionId, studentId },
         data: { status: 'Offline' }
-      })
+      }))
       return NextResponse.json({ error: 'This attendance session has ended', sessionEnded: true }, { status: 400 })
     }
 
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     const insideRadius = distance <= session.radius
 
     // 3. Upsert student's coordinate history
-    await db.locationUpdate.upsert({
+    await runWithRetry(() => db.locationUpdate.upsert({
       where: { studentId },
       update: {
         latitude,
@@ -68,15 +68,15 @@ export async function POST(request: NextRequest) {
         longitude,
         insideRadius
       }
-    })
+    }))
 
-    // 4. Update attendance status to Active
-    await db.attendance.updateMany({
+    // 4. Update attendance status to Inside/Outside based on current boundary location
+    await runWithRetry(() => db.attendance.updateMany({
       where: { sessionId, studentId },
       data: {
-        status: 'Active'
+        status: insideRadius ? 'Inside' : 'Outside'
       }
-    })
+    }))
 
     return NextResponse.json({
       success: true,

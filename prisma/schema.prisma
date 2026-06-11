@@ -52,15 +52,17 @@ model Student {
 }
 
 model Attendance {
-  id        String   @id @default(uuid())
-  sessionId String
-  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  studentId String   @unique
-  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  ipAddress String?
-  userAgent String?
-  joinedAt  DateTime @default(now())
-  status    String   @default("Active") // "Active", "Offline"
+  id          String   @id @default(uuid())
+  sessionId   String
+  session     Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  studentId   String   @unique
+  student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  ipAddress   String?
+  userAgent   String?
+  deviceType  String?
+  browserInfo String?
+  joinedAt    DateTime @default(now())
+  status      String   @default("Active") // "Active", "Offline"
 
   @@unique([sessionId, studentId])
 }

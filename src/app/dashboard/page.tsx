@@ -24,13 +24,15 @@ import {
   Volume2,
   VolumeX,
   Search,
-  Activity
+  Activity,
+  Download
 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import QRCode from 'qrcode'
 
 // Load Leaflet map component dynamically (SSR: false) to prevent 'window is not defined' errors
 const LiveMap = dynamic(() => import('@/components/LiveMap'), { ssr: false })
+import { getDistanceInMeters } from '@/lib/geoutils'
 
 interface Session {
   id: string
@@ -63,6 +65,8 @@ interface Attendance {
   student_id: string
   ip_address: string
   user_agent: string
+  device_type?: string
+  browser_info?: string
   joined_at: string
   status: string
 }
@@ -74,12 +78,16 @@ interface StudentFullDetails extends Student {
   inside_radius?: boolean
   ip_address?: string
   user_agent?: string
+  device_type?: string
+  browser_info?: string
   joined_at?: string
+  distance?: number
   status: 'inside' | 'outside' | 'offline'
 }
 
 interface ToastNotification {
   id: string
+  title: string
   message: string
   type: 'info' | 'success' | 'warning' | 'error'
   timestamp: Date
@@ -117,10 +125,36 @@ export default function Dashboard() {
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
   const [showQrModal, setShowQrModal] = useState(false)
   const [showRadiusModal, setShowRadiusModal] = useState(false)
+  const [showAnalyticsModal, setShowAnalyticsModal] = useState(false)
   const [newRadiusInput, setNewRadiusInput] = useState('')
   const [qrCodeUrl, setQrCodeUrl] = useState('')
   const [copiedLink, setCopiedLink] = useState(false)
   const [soundEnabled, setSoundEnabled] = useState(true)
+
+  // Network Information states
+  const [networkInfo, setNetworkInfo] = useState<{
+    hostIp: string
+    port: number
+    studentAccessUrl: string
+    status: string
+  } | null>(null)
+  const [networkStatus, setNetworkStatus] = useState<'Ready' | 'Error'>('Ready')
+  const [copiedNetworkUrl, setCopiedNetworkUrl] = useState(false)
+
+  // Helper to get the correct student access origin dynamically
+  const getStudentAccessOrigin = () => {
+    if (typeof window === 'undefined') return ''
+    const hostname = window.location.hostname
+    const isLocal = 
+      hostname === 'localhost' || 
+      hostname === '127.0.0.1' || 
+      hostname === '0.0.0.0'
+    
+    if (isLocal && networkInfo?.studentAccessUrl) {
+      return networkInfo.studentAccessUrl
+    }
+    return window.location.origin
+  }
 
   // Notifications/Toasts list
   const [toasts, setToasts] = useState<ToastNotification[]>([])
@@ -128,6 +162,52 @@ export default function Dashboard() {
 
   // Time left state
   const [timeLeft, setTimeLeft] = useState<string>('')
+
+  // Fetch network information and poll health status
+  useEffect(() => {
+    async function fetchNetworkInfo() {
+      try {
+        const res = await fetch('/api/network')
+        if (res.ok) {
+          const data = await res.json()
+          setNetworkInfo(data)
+          const socketConnected = activeSession ? (socketRef.current?.connected ?? false) : true
+          if (data.hostIp && socketConnected) {
+            setNetworkStatus('Ready')
+          } else {
+            setNetworkStatus('Error')
+          }
+        } else {
+          setNetworkStatus('Error')
+        }
+      } catch (err) {
+        setNetworkStatus('Error')
+      }
+    }
+
+    fetchNetworkInfo()
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/network')
+        if (res.ok) {
+          const data = await res.json()
+          const socketConnected = activeSession ? (socketRef.current?.connected ?? false) : true
+          if (data.hostIp && socketConnected) {
+            setNetworkStatus('Ready')
+          } else {
+            setNetworkStatus('Error')
+          }
+        } else {
+          setNetworkStatus('Error')
+        }
+      } catch (err) {
+        setNetworkStatus('Error')
+      }
+    }, 5000)
+
+    return () => clearInterval(interval)
+  }, [activeSession])
 
   // Refs for tracking changes to trigger audio/notifications
   const prevInsideState = useRef<Record<string, boolean>>({})
@@ -182,6 +262,22 @@ export default function Dashboard() {
     loadInitialData()
   }, [router])
 
+  // Poll session data as a fallback when socket is disconnected
+  useEffect(() => {
+    if (!activeSession) return
+
+    const pollInterval = setInterval(() => {
+      // Check if socket is disconnected or not initialized
+      const isSocketActive = socketRef.current?.connected
+      if (!isSocketActive) {
+        console.log('[Dashboard Polling Fallback] Socket is disconnected or unavailable. Polling latest session data...')
+        loadSessionData(activeSession.id)
+      }
+    }, 5000)
+
+    return () => clearInterval(pollInterval)
+  }, [activeSession])
+
   // Load students, attendance, and locations for an active session
   async function loadSessionData(sessionId: string) {
     try {
@@ -217,11 +313,12 @@ export default function Dashboard() {
           student_id: a.studentId,
           ip_address: a.ipAddress,
           user_agent: a.userAgent,
+          device_type: a.deviceType,
+          browser_info: a.browserInfo,
           joined_at: a.joinedAt,
           status: a.status
         }
       })
-
       setStudents(studentsMap)
       setLocations(locationsMap)
       setAttendanceRecords(attendanceMap)
@@ -230,7 +327,7 @@ export default function Dashboard() {
     }
   }
 
-  // 15-second offline check timer
+  // 30-second offline check timer
   useEffect(() => {
     if (!activeSession) return
 
@@ -243,7 +340,7 @@ export default function Dashboard() {
         Object.keys(updated).forEach((studentId) => {
           const loc = updated[studentId]
           const lastSeenTime = new Date(loc.last_seen).getTime()
-          const isOffline = now - lastSeenTime > 15000 // 15 seconds boundary
+          const isOffline = now - lastSeenTime > 30000 // Requirement 10: 30 seconds boundary
 
           // Check if status changed to offline to push notification
           if (isOffline && !prevOfflineState.current[studentId]) {
@@ -259,7 +356,7 @@ export default function Dashboard() {
               })
             }
 
-            triggerAlert(`${studentName} has disconnected (connection lost)`, 'error')
+            triggerAlert(`${studentName} disconnected.`, 'error', '⚠ Connection Lost')
             changed = true
           }
         })
@@ -299,12 +396,14 @@ export default function Dashboard() {
           student_id: attendance.studentId,
           ip_address: attendance.ipAddress || attendance.ip_address,
           user_agent: attendance.userAgent || attendance.user_agent,
+          device_type: attendance.deviceType || attendance.device_type,
+          browser_info: attendance.browserInfo || attendance.browser_info,
           joined_at: attendance.joinedAt || attendance.joined_at,
           status: attendance.status
         }
       }))
 
-      triggerAlert(`${student.name} joined the attendance session`, 'success')
+      triggerAlert(`${student.name} checked in.`, 'success', '✅ Student Joined')
     })
 
     // 2. Listen to student connection status changes
@@ -337,10 +436,10 @@ export default function Dashboard() {
       const studentName = students[studentId]?.name || 'Student'
       if (status === 'offline') {
         prevOfflineState.current[studentId] = true
-        triggerAlert(`${studentName} disconnected (connection lost)`, 'error')
+        triggerAlert(`${studentName} disconnected.`, 'error', '⚠ Connection Lost')
       } else {
         prevOfflineState.current[studentId] = false
-        triggerAlert(`${studentName} reconnected`, 'success')
+        triggerAlert(`${studentName} returned active.`, 'success', '✅ Student Reconnected')
       }
     })
 
@@ -367,9 +466,9 @@ export default function Dashboard() {
 
       if (prevInside !== undefined && prevInside !== curInside) {
         if (!curInside) {
-          triggerAlert(`${studentName} left the classroom boundary!`, 'warning')
+          triggerAlert(`${studentName} is now outside the classroom radius.`, 'warning', '⚠ Student Left Boundary')
         } else {
-          triggerAlert(`${studentName} returned inside the classroom boundary`, 'info')
+          triggerAlert(`${studentName} is back inside the classroom radius.`, 'success', '✅ Student Returned')
         }
       }
 
@@ -408,7 +507,7 @@ export default function Dashboard() {
   }, [activeSession])
 
   // Trigger audio alert and display a beautiful toast message on dashboard
-  function triggerAlert(message: string, type: 'info' | 'success' | 'warning' | 'error') {
+  function triggerAlert(message: string, type: 'info' | 'success' | 'warning' | 'error', title?: string) {
     // 1. Play Audio chime
     if (soundEnabled) {
       try {
@@ -435,6 +534,7 @@ export default function Dashboard() {
     // 2. Add Toast message
     const newToast: ToastNotification = {
       id: Math.random().toString(),
+      title: title || (type === 'success' ? 'Success' : type === 'warning' ? 'Warning' : type === 'error' ? 'Error' : 'Notification'),
       message,
       type,
       timestamp: new Date()
@@ -447,15 +547,16 @@ export default function Dashboard() {
     }, 6000)
   }
 
-  // Generate QR Code URL whenever active session changes
+  // Generate QR Code URL whenever active session or networkInfo changes
   useEffect(() => {
     if (activeSession) {
-      const joinUrl = `${window.location.origin}/join/${activeSession.id}`
+      const origin = getStudentAccessOrigin()
+      const joinUrl = `${origin}/join/${activeSession.id}`
       QRCode.toDataURL(joinUrl, { margin: 1, width: 300 })
         .then((url) => setQrCodeUrl(url))
         .catch((err) => console.error(err))
     }
-  }, [activeSession])
+  }, [activeSession, networkInfo])
 
   // Automatically detect teacher location to initialize classroom position
   const detectLocation = () => {
@@ -583,10 +684,19 @@ export default function Dashboard() {
         }
 
         setActiveSession(normalizedSession)
+        
+        // Emit live radius update over socket.io
+        if (socketRef.current) {
+          socketRef.current.emit('radius-update', {
+            roomId: normalizedSession.id,
+            radius: normalizedSession.radius
+          })
+        }
+
         setShowRadiusModal(false)
-        triggerAlert(`Geofence radius adjusted to ${newRadiusInput}m`, 'success')
+        triggerAlert(`Geofence radius adjusted to ${newRadiusInput}m`, 'success', '✅ Radius Updated')
       } else {
-        triggerAlert('Failed to update radius', 'error')
+        triggerAlert('Failed to update radius', 'error', '❌ Error')
       }
     } catch (err) {
       console.error('Error updating radius:', err)
@@ -629,13 +739,104 @@ export default function Dashboard() {
     router.refresh()
   }
 
+  // Download QR Code PNG image
+  const downloadQrCode = () => {
+    if (!qrCodeUrl) return
+    const link = document.createElement('a')
+    link.href = qrCodeUrl
+    link.download = `classtrack-qr-${activeSession?.session_name || 'session'}.png`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    triggerAlert('QR Code downloaded successfully.', 'success', '✅ Downloaded')
+  }
+
+  // Regenerate QR Code
+  const handleRegenerateQr = async () => {
+    if (!activeSession) return
+    try {
+      const origin = getStudentAccessOrigin()
+      const uniqueUrl = `${origin}/join/${activeSession.id}?ref=${Date.now()}`
+      const url = await QRCode.toDataURL(uniqueUrl, { margin: 1, width: 300 })
+      setQrCodeUrl(url)
+      triggerAlert('QR Code refreshed successfully.', 'success', '✅ QR Refreshed')
+    } catch (err) {
+      console.error(err)
+      triggerAlert('Failed to regenerate QR code.', 'error', '❌ Error')
+    }
+  }
+
   // Copy registration link to clipboard
   const copySessionLink = () => {
     if (!activeSession) return
-    const link = `${window.location.origin}/join/${activeSession.id}`
+    const origin = getStudentAccessOrigin()
+    const link = `${origin}/join/${activeSession.id}`
     navigator.clipboard.writeText(link)
     setCopiedLink(true)
     setTimeout(() => setCopiedLink(false), 2000)
+  }
+
+  // Copy Network Info URL
+  const copyNetworkUrl = () => {
+    const origin = getStudentAccessOrigin()
+    if (!origin) return
+    navigator.clipboard.writeText(origin)
+    setCopiedNetworkUrl(true)
+    setTimeout(() => setCopiedNetworkUrl(false), 2000)
+    triggerAlert('Student Access URL copied to clipboard.', 'success', '✅ Copied')
+  }
+
+  // Export Attendance to CSV
+  const exportAttendanceCSV = () => {
+    const list = getAggregatedStudents()
+    if (list.length === 0) {
+      triggerAlert('No attendance records to export.', 'error', '❌ Export Failed')
+      return
+    }
+
+    // Columns: Name, Roll Number, IP Address, Join Time, Status, Last Seen
+    const headers = ['Name', 'Roll Number', 'IP Address', 'Join Time', 'Status', 'Last Seen']
+    const rows = list.map((s) => [
+      `"${s.name.replace(/"/g, '""')}"`,
+      `"${s.roll_number}"`,
+      `"${s.ip_address || 'N/A'}"`,
+      `"${s.joined_at ? new Date(s.joined_at).toLocaleString() : 'N/A'}"`,
+      `"${s.status === 'inside' ? 'Inside' : s.status === 'outside' ? 'Outside' : 'Offline'}"`,
+      `"${s.last_seen ? new Date(s.last_seen).toLocaleString() : 'N/A'}"`
+    ])
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `attendance-${activeSession?.session_name || 'session'}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    triggerAlert('Attendance logs exported successfully.', 'success', '✅ Exported')
+  }
+
+  // Calculate Average Session Duration
+  const getAverageSessionDuration = (): string => {
+    const list = getAggregatedStudents()
+    if (list.length === 0) return '0m'
+    
+    let totalMs = 0
+    let count = 0
+
+    list.forEach((s) => {
+      if (s.joined_at) {
+        const start = new Date(s.joined_at).getTime()
+        const end = s.last_seen ? new Date(s.last_seen).getTime() : Date.now()
+        totalMs += Math.max(0, end - start)
+        count++
+      }
+    })
+
+    if (count === 0) return '0m'
+    const avgMinutes = Math.round((totalMs / count) / (1000 * 60))
+    return `${avgMinutes}m`
   }
 
   // Consolidate raw tracking data into UI models
@@ -652,11 +853,23 @@ export default function Dashboard() {
         status = 'offline'
       } else if (loc) {
         const lastSeenDiff = Date.now() - new Date(loc.last_seen).getTime()
-        if (lastSeenDiff > 15000) {
+        if (lastSeenDiff > 30000) { // Requirement 10: 30 seconds
           status = 'offline'
         } else {
           status = loc.inside_radius ? 'inside' : 'outside'
         }
+      }
+
+      let distance: number | undefined = undefined
+      if (activeSession && loc?.latitude !== undefined && loc?.longitude !== undefined) {
+        distance = Math.round(
+          getDistanceInMeters(
+            activeSession.latitude,
+            activeSession.longitude,
+            loc.latitude,
+            loc.longitude
+          )
+        )
       }
 
       list.push({
@@ -667,7 +880,10 @@ export default function Dashboard() {
         inside_radius: loc?.inside_radius,
         ip_address: att?.ip_address,
         user_agent: att?.user_agent,
+        device_type: att?.device_type,
+        browser_info: att?.browser_info,
         joined_at: att?.joined_at,
+        distance,
         status
       })
     })
@@ -745,6 +961,22 @@ export default function Dashboard() {
             >
               <Sliders className="w-4 h-4 text-violet-400" />
               Radius ({activeSession.radius}m)
+            </button>
+
+            <button
+              onClick={() => setShowAnalyticsModal(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-bold transition-all text-xs cursor-pointer shadow-sm border border-zinc-700"
+            >
+              <Activity className="w-4 h-4 text-violet-400" />
+              Analytics
+            </button>
+
+            <button
+              onClick={exportAttendanceCSV}
+              className="flex items-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-bold transition-all text-xs cursor-pointer shadow-sm border border-zinc-700"
+            >
+              <Download className="w-4 h-4 text-violet-400" />
+              Export CSV
             </button>
 
             <button
@@ -832,26 +1064,76 @@ export default function Dashboard() {
                   <button
                     key={stud.id}
                     onClick={() => setSelectedStudentId(isSelected ? null : stud.id)}
-                    className={`w-full text-left p-4 transition-colors text-xs space-y-2 relative border-l-2 hover:bg-zinc-900/40 ${
+                    className={`w-full text-left p-4 transition-colors text-xs space-y-1 relative border-l-2 hover:bg-zinc-900/40 ${
                       isSelected 
                         ? 'bg-zinc-900/60 border-l-violet-500' 
                         : 'border-l-transparent'
                     }`}
                   >
-                    <div className="flex justify-between items-start">
-                      <div className="font-semibold text-white leading-none truncate max-w-[150px]">{stud.name}</div>
-                      <div className="flex items-center gap-1.5">
-                        <span className={`w-2 h-2 rounded-full ${statusColor}`} />
-                        <span className="text-[10px] text-zinc-500 font-medium capitalize">{stud.status}</span>
-                      </div>
-                    </div>
-                    <div className="flex justify-between items-center text-[10px] text-zinc-500">
-                      <span>Roll: {stud.roll_number}</span>
-                      <span className="font-mono text-[9px] truncate max-w-[100px]">{stud.ip_address}</span>
+                    <div className="font-semibold text-white truncate text-sm">{stud.name}</div>
+                    <div className="font-mono text-[10px] text-zinc-500">{stud.ip_address || 'No IP Address'}</div>
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      <span className={`w-2 h-2 rounded-full ${statusColor}`} />
+                      <span className="text-[10px] text-zinc-400 font-medium capitalize">
+                        {stud.status === 'inside' ? 'Inside' : stud.status === 'outside' ? 'Outside' : 'Offline'}
+                      </span>
                     </div>
                   </button>
                 )
               })
+            )}
+          </div>
+
+          {/* Network Information Card */}
+          <div className="p-4 border-t border-zinc-800/80 bg-zinc-900/40 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+                Network Info
+              </span>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 ${
+                networkStatus === 'Ready' 
+                  ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-900/30' 
+                  : 'bg-rose-950/60 text-rose-400 border border-rose-900/30'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${networkStatus === 'Ready' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+                {networkStatus === 'Ready' ? '🟢 Ready' : '🔴 Error'}
+              </span>
+            </div>
+
+            {networkInfo ? (
+              <div className="space-y-2 text-zinc-400 text-[10px] leading-relaxed bg-zinc-950/60 p-3 rounded-xl border border-zinc-800">
+                <div className="flex justify-between items-center">
+                  <span>Host IP:</span>
+                  <span className="font-mono text-white font-semibold">{networkInfo.hostIp}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span>Port:</span>
+                  <span className="font-mono text-white font-semibold">{networkInfo.port}</span>
+                </div>
+                <div className="border-t border-zinc-800/60 my-2 pt-2">
+                  <span className="block text-zinc-500 text-[9px] uppercase font-bold tracking-wider mb-1">Student Access URL</span>
+                  <div className="flex items-center justify-between gap-2 bg-zinc-900/80 p-2 rounded-lg border border-zinc-800/60">
+                    <span className="font-mono text-white truncate text-[9px] flex-1 select-all">
+                      {getStudentAccessOrigin()}
+                    </span>
+                    <button
+                      onClick={copyNetworkUrl}
+                      className="p-1 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-md transition-colors cursor-pointer flex-shrink-0"
+                      title="Copy URL"
+                    >
+                      {copiedNetworkUrl ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="p-3 text-center text-zinc-500 text-xs bg-zinc-950/60 rounded-xl border border-zinc-800 animate-pulse">
+                Detecting local IP address...
+              </div>
             )}
           </div>
         </aside>
@@ -1073,9 +1355,9 @@ export default function Dashboard() {
 
           {/* Detailed Student view overlay drawer (when student is clicked in sidebar) */}
           {selectedStudent && (
-            <div className="absolute top-6 left-6 bottom-6 w-80 bg-zinc-900/90 backdrop-blur-xl border border-zinc-800 rounded-2xl shadow-2xl flex flex-col z-[1000] p-6 animate-in slide-in-from-left duration-200">
+            <div className="absolute top-0 right-0 h-full w-80 bg-zinc-900/95 backdrop-blur-xl border-l border-zinc-800 shadow-2xl flex flex-col z-[1000] p-6 animate-in slide-in-from-right duration-300">
               <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
-                <h3 className="font-bold text-white">Student Details</h3>
+                <h3 className="font-bold text-white text-sm">Student Details</h3>
                 <button
                   onClick={() => setSelectedStudentId(null)}
                   className="p-1 hover:bg-zinc-800 text-zinc-500 hover:text-white rounded-lg transition-colors cursor-pointer"
@@ -1109,30 +1391,52 @@ export default function Dashboard() {
                     <span className="text-zinc-200 font-mono mt-0.5 block">{selectedStudent.ip_address || 'N/A'}</span>
                   </div>
                   <div>
-                    <span className="text-zinc-500 block">Joined Timestamp</span>
-                    <span className="text-zinc-200 mt-0.5 block">
-                      {selectedStudent.joined_at ? new Date(selectedStudent.joined_at).toLocaleString() : 'N/A'}
+                    <span className="text-zinc-500 block">Status</span>
+                    <span className={`font-semibold mt-0.5 block capitalize ${
+                      selectedStudent.status === 'inside'
+                        ? 'text-emerald-400'
+                        : selectedStudent.status === 'outside'
+                        ? 'text-rose-400'
+                        : 'text-amber-400'
+                    }`}>
+                      {selectedStudent.status === 'inside' ? '🟢 Inside Radius' : selectedStudent.status === 'outside' ? '🔴 Outside Radius' : '🟡 Offline'}
                     </span>
                   </div>
                   <div>
-                    <span className="text-zinc-500 block">Last Coordinates</span>
-                    <span className="text-zinc-200 font-mono mt-0.5 block">
-                      {selectedStudent.latitude !== undefined && selectedStudent.longitude !== undefined
-                        ? `${selectedStudent.latitude.toFixed(6)}, ${selectedStudent.longitude.toFixed(6)}`
-                        : 'No coordinates logged'}
+                    <span className="text-zinc-500 block">Distance From Classroom</span>
+                    <span className="text-zinc-200 mt-0.5 block font-semibold">
+                      {selectedStudent.distance !== undefined ? `${selectedStudent.distance} meters` : 'N/A'}
                     </span>
                   </div>
                   <div>
-                    <span className="text-zinc-500 block">Last Seen Status</span>
+                    <span className="text-zinc-500 block">Last Seen Timestamp</span>
                     <span className="text-zinc-200 mt-0.5 block">
                       {selectedStudent.last_seen 
-                        ? new Date(selectedStudent.last_seen).toLocaleTimeString() 
+                        ? new Date(selectedStudent.last_seen).toLocaleString() 
                         : 'Never'}
                     </span>
                   </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-zinc-500 block">Latitude</span>
+                      <span className="text-zinc-200 font-mono mt-0.5 block">{selectedStudent.latitude?.toFixed(6) ?? 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block">Longitude</span>
+                      <span className="text-zinc-200 font-mono mt-0.5 block">{selectedStudent.longitude?.toFixed(6) ?? 'N/A'}</span>
+                    </div>
+                  </div>
                   <div>
-                    <span className="text-zinc-500 block mb-1">User Agent (Device Info)</span>
-                    <div className="bg-zinc-950/60 p-2.5 rounded-lg border border-zinc-850 text-[10px] text-zinc-400 break-all leading-normal max-h-24 overflow-y-auto">
+                    <span className="text-zinc-500 block">Browser</span>
+                    <span className="text-zinc-200 mt-0.5 block">{selectedStudent.browser_info || 'Unknown'}</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-550 block">Device</span>
+                    <span className="text-zinc-200 mt-0.5 block">{selectedStudent.device_type || 'Unknown'}</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500 block mb-1">User Agent String</span>
+                    <div className="bg-zinc-950/60 p-2.5 rounded-lg border border-zinc-850 text-[9px] text-zinc-400 break-all leading-normal max-h-24 overflow-y-auto">
                       {selectedStudent.user_agent || 'Unknown'}
                     </div>
                   </div>
@@ -1165,10 +1469,13 @@ export default function Dashboard() {
               return (
                 <div
                   key={toast.id}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl border backdrop-blur-md shadow-xl text-xs font-medium animate-in fade-in slide-in-from-bottom duration-200 max-w-sm pointer-events-auto ${theme}`}
+                  className={`flex items-start gap-3 px-4 py-3 rounded-xl border backdrop-blur-md shadow-xl text-xs animate-in fade-in slide-in-from-bottom duration-200 max-w-sm pointer-events-auto ${theme}`}
                 >
-                  <Icon className="w-4.5 h-4.5 flex-shrink-0" />
-                  <span>{toast.message}</span>
+                  <Icon className="w-4.5 h-4.5 flex-shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <div className="font-bold text-white leading-tight">{toast.title}</div>
+                    <div className="text-zinc-350 text-[10px] leading-relaxed">{toast.message}</div>
+                  </div>
                 </div>
               )
             })}
@@ -1207,12 +1514,28 @@ export default function Dashboard() {
                 Students scan this QR code or navigate to the link below to verify geofenced attendance.
               </p>
 
+              {/* Download and Regenerate buttons */}
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={downloadQrCode}
+                  className="flex-1 py-2 px-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer text-center"
+                >
+                  Download QR
+                </button>
+                <button
+                  onClick={handleRegenerateQr}
+                  className="flex-1 py-2 px-3 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800/80 text-white rounded-xl text-xs font-bold transition-all cursor-pointer text-center"
+                >
+                  Regenerate QR
+                </button>
+              </div>
+
               {/* Copy URL bar */}
               <div className="w-full flex gap-2 bg-zinc-950 p-2.5 rounded-xl border border-zinc-850">
                 <input
                   type="text"
                   readOnly
-                  value={`${window.location.origin}/join/${activeSession.id}`}
+                  value={`${getStudentAccessOrigin()}/join/${activeSession.id}`}
                   className="flex-1 bg-transparent text-[10px] text-zinc-350 focus:outline-none truncate"
                 />
                 <button
@@ -1244,17 +1567,42 @@ export default function Dashboard() {
             <div className="space-y-4">
               <div>
                 <label className="block text-xs text-zinc-400 mb-2 font-medium">Classroom Radius (meters)</label>
-                <select
-                  value={newRadiusInput}
-                  onChange={(e) => setNewRadiusInput(e.target.value)}
-                  className="block w-full px-3 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 text-xs"
-                >
-                  <option value="15">15 meters</option>
-                  <option value="30">30 meters</option>
-                  <option value="50">50 meters</option>
-                  <option value="100">100 meters</option>
-                  <option value="200">200 meters</option>
-                </select>
+                <div className="flex gap-2 items-center">
+                  <button
+                    onClick={() => {
+                      const current = parseInt(newRadiusInput) || 50
+                      setNewRadiusInput(Math.max(10, current - 10).toString())
+                    }}
+                    className="p-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl border border-zinc-700 font-bold text-xs flex items-center justify-center w-10 cursor-pointer"
+                  >
+                    -
+                  </button>
+                  <select
+                    value={newRadiusInput}
+                    onChange={(e) => setNewRadiusInput(e.target.value)}
+                    className="flex-1 block px-3 py-2.5 bg-zinc-950/60 border border-zinc-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 text-xs font-mono"
+                  >
+                    <option value="10">10m</option>
+                    <option value="15">15m</option>
+                    <option value="20">20m</option>
+                    <option value="30">30m</option>
+                    <option value="40">40m</option>
+                    <option value="50">50m</option>
+                    <option value="75">75m</option>
+                    <option value="100">100m</option>
+                    <option value="150">150m</option>
+                    <option value="200">200m</option>
+                  </select>
+                  <button
+                    onClick={() => {
+                      const current = parseInt(newRadiusInput) || 50
+                      setNewRadiusInput((current + 10).toString())
+                    }}
+                    className="p-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl border border-zinc-700 font-bold text-xs flex items-center justify-center w-10 cursor-pointer"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
 
               <button
@@ -1264,6 +1612,52 @@ export default function Dashboard() {
                 Save Settings
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Session Analytics Modal */}
+      {showAnalyticsModal && activeSession && (
+        <div className="fixed inset-0 z-[1500] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-6">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <h3 className="font-bold text-white text-sm">Session Analytics</h3>
+              <button
+                onClick={() => setShowAnalyticsModal(false)}
+                className="p-1 hover:bg-zinc-800 text-zinc-500 hover:text-white rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-4.5 h-4.5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 text-xs">
+              <div className="bg-zinc-950/40 border border-zinc-800/50 rounded-xl p-3.5 space-y-1">
+                <span className="text-zinc-500 block">Total Joined</span>
+                <span className="text-lg font-black text-white">{totalStudents}</span>
+              </div>
+              <div className="bg-zinc-950/40 border border-zinc-800/50 rounded-xl p-3.5 space-y-1">
+                <span className="text-emerald-500 block">Current Present</span>
+                <span className="text-lg font-black text-emerald-400">{presentCount}</span>
+              </div>
+              <div className="bg-zinc-950/40 border border-zinc-800/50 rounded-xl p-3.5 space-y-1">
+                <span className="text-rose-500 block">Students Outside</span>
+                <span className="text-lg font-black text-rose-400">{outsideCount}</span>
+              </div>
+              <div className="bg-zinc-950/40 border border-zinc-800/50 rounded-xl p-3.5 space-y-1">
+                <span className="text-amber-500 block">Students Offline</span>
+                <span className="text-lg font-black text-amber-400">{offlineCount}</span>
+              </div>
+              <div className="col-span-2 bg-zinc-950/40 border border-zinc-800/50 rounded-xl p-3.5 flex justify-between items-center">
+                <span className="text-zinc-400 font-medium">Avg Session Duration</span>
+                <span className="text-sm font-bold text-violet-400 font-mono">{getAverageSessionDuration()}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowAnalyticsModal(false)}
+              className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md"
+            >
+              Close Analytics
+            </button>
           </div>
         </div>
       )}

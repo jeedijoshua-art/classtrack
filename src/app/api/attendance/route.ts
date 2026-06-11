@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, runWithRetry } from '@/lib/db'
 import { verifyToken } from '@/lib/jwt'
 import { z } from 'zod'
 
@@ -27,13 +27,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Session ID is required' }, { status: 400 })
     }
 
-    const attendance = await db.attendance.findMany({
+    const attendance = await runWithRetry(() => db.attendance.findMany({
       where: { sessionId },
       include: {
         student: true
       },
       orderBy: { joinedAt: 'desc' }
-    })
+    }))
 
     return NextResponse.json({ attendance })
   } catch (err: any) {
@@ -54,9 +54,9 @@ export async function POST(request: NextRequest) {
     const { name, rollNumber, department, sessionId } = parsed.data
 
     // 1. Verify classroom session status
-    const session = await db.session.findUnique({
+    const session = await runWithRetry(() => db.session.findUnique({
       where: { id: sessionId }
-    })
+    }))
 
     if (!session) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 })
@@ -77,29 +77,35 @@ export async function POST(request: NextRequest) {
     }
 
     const userAgent = request.headers.get('user-agent') || 'Unknown User Agent'
+    const { deviceType, browserInfo } = parseUserAgent(userAgent)
 
-    // 2. Check if student already joined this session (recheck-in case)
-    let student = await db.student.findFirst({
+    // 2. Check if student already joined this session (prevent duplicates)
+    const existingStudent = await runWithRetry(() => db.student.findFirst({
       where: {
         sessionId,
         rollNumber
       }
-    })
+    }))
 
-    if (!student) {
-      // Create new student profile
-      student = await db.student.create({
-        data: {
-          sessionId,
-          name,
-          rollNumber,
-          department
-        }
-      })
+    if (existingStudent) {
+      return NextResponse.json(
+        { error: `A student with roll number "${rollNumber}" has already checked in to this session.` },
+        { status: 400 }
+      )
     }
 
+    // Create new student profile
+    const student = await runWithRetry(() => db.student.create({
+      data: {
+        sessionId,
+        name,
+        rollNumber,
+        department
+      }
+    }))
+
     // 3. Upsert the attendance log
-    const attendance = await db.attendance.upsert({
+    const attendance = await runWithRetry(() => db.attendance.upsert({
       where: {
         sessionId_studentId: {
           sessionId,
@@ -109,7 +115,9 @@ export async function POST(request: NextRequest) {
       update: {
         ipAddress,
         userAgent,
-        status: 'Active',
+        deviceType,
+        browserInfo,
+        status: 'Inside',
         joinedAt: new Date()
       },
       create: {
@@ -117,9 +125,11 @@ export async function POST(request: NextRequest) {
         studentId: student.id,
         ipAddress,
         userAgent,
-        status: 'Active'
+        deviceType,
+        browserInfo,
+        status: 'Inside'
       }
-    })
+    }))
 
     return NextResponse.json({
       success: true,
@@ -130,4 +140,36 @@ export async function POST(request: NextRequest) {
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
+}
+
+function parseUserAgent(ua: string) {
+  let deviceType = 'Desktop'
+  let browserInfo = 'Unknown'
+
+  const uaLower = ua.toLowerCase()
+  if (/mobi|android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(uaLower)) {
+    if (/ipad|tablet/i.test(uaLower)) {
+      deviceType = 'Tablet'
+    } else {
+      deviceType = 'Mobile'
+    }
+  }
+
+  if (/chrome|crios/i.test(ua)) {
+    if (/edg/i.test(ua)) {
+      browserInfo = 'Edge'
+    } else if (/opr/i.test(ua)) {
+      browserInfo = 'Opera'
+    } else {
+      browserInfo = 'Chrome'
+    }
+  } else if (/safari/i.test(ua) && !/chrome|crios/i.test(ua)) {
+    browserInfo = 'Safari'
+  } else if (/firefox|fxios/i.test(ua)) {
+    browserInfo = 'Firefox'
+  } else if (/msie|trident/i.test(ua)) {
+    browserInfo = 'Internet Explorer'
+  }
+
+  return { deviceType, browserInfo }
 }

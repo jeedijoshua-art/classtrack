@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Circle, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -10,6 +10,9 @@ interface StudentMarkerData {
   latitude?: number
   longitude?: number
   status: 'inside' | 'outside' | 'offline'
+  ip_address?: string
+  last_seen?: string
+  distance?: number
 }
 
 interface LiveMapProps {
@@ -161,14 +164,26 @@ export default function LiveMap({
               position={studentPos}
               icon={createStudentIcon(student.status)}
             >
+              <Tooltip permanent direction="top" className="custom-tooltip" offset={[0, -10]}>
+                {student.name}
+              </Tooltip>
               <Popup>
-                <div className="p-1 font-sans text-xs bg-zinc-900 text-zinc-200 border-0 leading-relaxed">
-                  <p className="font-bold text-white">{student.name}</p>
+                <div className="p-1 font-sans text-xs text-zinc-200 border-0 leading-relaxed min-w-[150px]">
+                  <p className="font-bold text-white text-sm border-b border-zinc-800 pb-1 mb-1">{student.name}</p>
                   <p className="text-[10px] text-zinc-400">Roll: {student.roll_number}</p>
-                  <p className="text-[10px] mt-1">
-                    Status:{' '}
+                  <p className="text-[10px] text-zinc-400">IP: {student.ip_address || 'N/A'}</p>
+                  <p className="text-[10px] text-zinc-400">
+                    Distance: <span className="font-medium text-zinc-350">{student.distance !== undefined ? `${student.distance}m` : 'N/A'}</span>
+                  </p>
+                  <p className="text-[10px] text-zinc-400">
+                    Last Seen: <span className="font-medium text-zinc-350">{student.last_seen ? new Date(student.last_seen).toLocaleTimeString() : 'N/A'}</span>
+                  </p>
+                  <p className="text-[10px] mt-1.5 flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full ${
+                      student.status === 'inside' ? 'bg-emerald-500' : student.status === 'outside' ? 'bg-rose-500' : 'bg-amber-500'
+                    }`} />
                     <span
-                      className={`font-semibold ${
+                      className={`font-semibold capitalize ${
                         student.status === 'inside'
                           ? 'text-emerald-400'
                           : student.status === 'outside'
@@ -176,11 +191,7 @@ export default function LiveMap({
                           : 'text-amber-400'
                       }`}
                     >
-                      {student.status === 'inside'
-                        ? 'Inside geofence'
-                        : student.status === 'outside'
-                        ? 'Outside geofence'
-                        : 'Offline / Disconnected'}
+                      {student.status === 'inside' ? 'Inside Radius' : student.status === 'outside' ? 'Outside Radius' : 'Offline'}
                     </span>
                   </p>
                 </div>
