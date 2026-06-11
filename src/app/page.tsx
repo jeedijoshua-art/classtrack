@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import {
   Lock,
   Mail,
@@ -29,14 +28,6 @@ import {
 } from 'lucide-react'
 
 export default function Home() {
-  const [router, setRouter] = useState<any>(null)
-  
-  // Dynamic import workaround or safe navigation hook
-  useEffect(() => {
-    import('next/navigation').then((mod) => {
-      setRouter(mod.useRouter())
-    })
-  }, [])
 
   // Theme support state
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
@@ -187,7 +178,7 @@ export default function Home() {
 
         <nav className="hidden md:flex items-center gap-8 text-xs font-bold uppercase tracking-wider text-ct-muted">
           <a href="#features" className="hover:text-ct-text transition-colors">Features</a>
-          <a href="#simulator" className="hover:text-ct-text transition-colors">Simulator</a>
+          <a href="/demo" className="hover:text-ct-text transition-colors">Demo</a>
           <a href="#workflow" className="hover:text-ct-text transition-colors">Workflow</a>
           <a href="#faq" className="hover:text-ct-text transition-colors">FAQ</a>
         </nav>
@@ -230,7 +221,7 @@ export default function Home() {
         <div className="md:hidden sticky top-[73px] z-30 w-full border-b border-ct-border bg-ct-card-solid backdrop-blur-lg px-6 py-5 space-y-4 animate-in slide-in-from-top duration-200">
           <nav className="flex flex-col gap-4 text-xs font-bold uppercase tracking-wider text-ct-muted">
             <a href="#features" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-ct-text transition-colors">Features</a>
-            <a href="#simulator" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-ct-text transition-colors">Simulator</a>
+            <a href="/demo" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-ct-text transition-colors">Demo</a>
             <a href="#workflow" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-ct-text transition-colors">Workflow</a>
             <a href="#faq" onClick={() => setIsMobileMenuOpen(false)} className="hover:text-ct-text transition-colors">FAQ</a>
           </nav>
@@ -277,7 +268,7 @@ export default function Home() {
               <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
             </button>
             <a
-              href="#simulator"
+              href="/demo"
               className="w-full sm:w-auto px-8 py-4 border border-ct-border hover:bg-ct-card text-ct-text rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer hover:border-ct-text shadow-sm"
             >
               Try Interactive Demo

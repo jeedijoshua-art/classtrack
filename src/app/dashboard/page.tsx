@@ -817,7 +817,7 @@ export default function Dashboard() {
 
   // Export Attendance to CSV
   const exportAttendanceCSV = () => {
-    const list = getAggregatedStudents()
+    const list = aggregatedStudents
     if (list.length === 0) {
       triggerAlert('No attendance records to export.', 'error', '❌ Export Failed')
       return
@@ -848,7 +848,7 @@ export default function Dashboard() {
 
   // Calculate Average Session Duration
   const getAverageSessionDuration = (): string => {
-    const list = getAggregatedStudents()
+    const list = aggregatedStudents
     if (list.length === 0) return '0m'
     
     let totalMs = 0
@@ -882,7 +882,7 @@ export default function Dashboard() {
         status = 'offline'
       } else if (loc) {
         const lastSeenDiff = Date.now() - new Date(loc.last_seen).getTime()
-        if (lastSeenDiff > 30000) { // Requirement 10: 30 seconds
+        if (lastSeenDiff > 30000) {
           status = 'offline'
         } else {
           status = loc.inside_radius ? 'inside' : 'outside'
@@ -934,13 +934,55 @@ export default function Dashboard() {
   const outsideCount = aggregatedStudents.filter((s) => s.status === 'outside').length
   const offlineCount = aggregatedStudents.filter((s) => s.status === 'offline').length
 
-  const selectedStudent = selectedStudentId ? getAggregatedStudents().find(s => s.id === selectedStudentId) : null
+  const selectedStudent = selectedStudentId ? aggregatedStudents.find(s => s.id === selectedStudentId) : null
 
   if (loading) {
     return (
-      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-ct-bg text-ct-text font-sans">
-        <div className="w-10 h-10 border-4 border-violet-500/20 border-t-violet-500 rounded-full animate-spin mb-4" />
-        <p className="text-ct-muted text-sm">Synchronizing dashboard access...</p>
+      <div className="flex flex-col h-screen w-full bg-ct-bg text-ct-text font-sans overflow-hidden">
+        {/* Skeleton Header */}
+        <div className="flex items-center justify-between px-6 py-4 bg-ct-card border-b border-ct-border">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl skeleton-shimmer" />
+            <div className="space-y-1.5">
+              <div className="w-28 h-4 rounded skeleton-shimmer" />
+              <div className="w-20 h-3 rounded skeleton-shimmer" />
+            </div>
+          </div>
+          <div className="hidden lg:flex items-center gap-3">
+            <div className="w-32 h-8 rounded-xl skeleton-shimmer" />
+            <div className="w-20 h-8 rounded-xl skeleton-shimmer" />
+          </div>
+        </div>
+        <div className="flex flex-1 overflow-hidden">
+          {/* Skeleton Sidebar */}
+          <div className="hidden lg:flex w-80 border-r border-ct-border bg-ct-card flex-col">
+            <div className="p-4 border-b border-ct-border space-y-3">
+              <div className="w-32 h-4 rounded skeleton-shimmer" />
+              <div className="w-full h-9 rounded-xl skeleton-shimmer" />
+            </div>
+            <div className="flex-1 p-4 space-y-4">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="space-y-2 p-3 rounded-xl border border-ct-border/30">
+                  <div className="w-24 h-3.5 rounded skeleton-shimmer" />
+                  <div className="w-16 h-3 rounded skeleton-shimmer" />
+                  <div className="w-12 h-3 rounded skeleton-shimmer" />
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Skeleton Main */}
+          <div className="flex-1 p-6 space-y-6">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="bg-ct-card border border-ct-border rounded-2xl p-4 space-y-2">
+                  <div className="w-16 h-3 rounded skeleton-shimmer" />
+                  <div className="w-10 h-7 rounded skeleton-shimmer" />
+                </div>
+              ))}
+            </div>
+            <div className="flex-1 h-80 lg:h-full rounded-2xl skeleton-shimmer border border-ct-border" />
+          </div>
+        </div>
       </div>
     )
   }
@@ -1456,14 +1498,14 @@ export default function Dashboard() {
                   </div>
 
                   {/* Classroom Coordinate capture */}
-                  <div className="border-t border-zinc-800/80 pt-4 space-y-4">
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400">Classroom Coordinates</label>
+                  <div className="border-t border-ct-border/60 pt-4 space-y-4">
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-ct-muted">Classroom Coordinates</label>
                     <div className="flex gap-3">
                       <button
                         type="button"
                         onClick={detectLocation}
                         disabled={detectingCoords}
-                        className="flex-1 flex justify-center items-center gap-2 py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-bold transition-all border border-zinc-700 disabled:opacity-50 cursor-pointer"
+                        className="flex-1 flex justify-center items-center gap-2 py-3 bg-ct-card hover:bg-ct-card-solid text-ct-text rounded-xl text-xs font-bold transition-all border border-ct-border disabled:opacity-50 cursor-pointer"
                       >
                         {detectingCoords ? (
                           <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
@@ -1485,7 +1527,7 @@ export default function Dashboard() {
                             setClassroomLng(-122.419418)
                           }
                         }}
-                        className="flex-1 flex justify-center items-center gap-2 py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-bold transition-all border border-zinc-700 cursor-pointer"
+                        className="flex-1 flex justify-center items-center gap-2 py-3 bg-ct-card hover:bg-ct-card-solid text-ct-text rounded-xl text-xs font-bold transition-all border border-ct-border cursor-pointer"
                       >
                         <MapPin className="w-4 h-4 text-violet-400" />
                         Set Coordinates Manually
@@ -1493,26 +1535,26 @@ export default function Dashboard() {
                     </div>
 
                     {showCoordsForm && classroomLat !== null && classroomLng !== null && (
-                      <div className="bg-zinc-950/60 p-4 rounded-xl border border-zinc-800/60 space-y-3">
+                      <div className="bg-ct-input/60 p-4 rounded-xl border border-ct-border/60 space-y-3">
                         <div className="grid grid-cols-2 gap-3 text-xs">
                           <div>
-                            <span className="text-zinc-500">Latitude</span>
+                            <span className="text-ct-muted">Latitude</span>
                             <input
                               type="number"
                               step="0.000001"
                               value={classroomLat}
                               onChange={(e) => setClassroomLat(parseFloat(e.target.value))}
-                              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 mt-1 text-white font-mono"
+                              className="w-full bg-ct-input border border-ct-border rounded-lg p-2 mt-1 text-ct-text font-mono"
                             />
                           </div>
                           <div>
-                            <span className="text-zinc-500">Longitude</span>
+                            <span className="text-ct-muted">Longitude</span>
                             <input
                               type="number"
                               step="0.000001"
                               value={classroomLng}
                               onChange={(e) => setClassroomLng(parseFloat(e.target.value))}
-                              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 mt-1 text-white font-mono"
+                              className="w-full bg-ct-input border border-ct-border rounded-lg p-2 mt-1 text-ct-text font-mono"
                             />
                           </div>
                         </div>
@@ -1639,9 +1681,9 @@ export default function Dashboard() {
           )}
 
           {/* Toast Notification HUD display list (Bottom Right) */}
-          <div className="absolute bottom-6 right-6 flex flex-col gap-3 z-[1000] pointer-events-none">
+          <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 flex flex-col gap-2.5 z-[1000] max-w-[calc(100vw-2rem)] sm:max-w-sm">
             {toasts.map((toast) => {
-              const theme =
+              const toastTheme =
                 toast.type === 'success'
                   ? 'bg-emerald-950/90 border-emerald-900/60 text-emerald-200'
                   : toast.type === 'warning'
@@ -1662,13 +1704,19 @@ export default function Dashboard() {
               return (
                 <div
                   key={toast.id}
-                  className={`flex items-start gap-3 px-4 py-3 rounded-xl border backdrop-blur-md shadow-xl text-xs animate-in fade-in slide-in-from-bottom duration-200 max-w-sm pointer-events-auto ${theme}`}
+                  className={`flex items-start gap-3 px-4 py-3 rounded-xl border backdrop-blur-md shadow-xl text-xs toast-enter ${toastTheme}`}
                 >
                   <Icon className="w-4.5 h-4.5 flex-shrink-0 mt-0.5" />
-                  <div className="space-y-0.5">
+                  <div className="flex-1 space-y-0.5 min-w-0">
                     <div className="font-bold text-white leading-tight">{toast.title}</div>
-                    <div className="text-zinc-350 text-[10px] leading-relaxed">{toast.message}</div>
+                    <div className="text-zinc-350 text-[10px] leading-relaxed truncate">{toast.message}</div>
                   </div>
+                  <button
+                    onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+                    className="p-0.5 hover:bg-white/10 rounded transition-colors cursor-pointer flex-shrink-0"
+                  >
+                    <X className="w-3 h-3 text-white/60 hover:text-white" />
+                  </button>
                 </div>
               )
             })}
@@ -1679,12 +1727,12 @@ export default function Dashboard() {
       {/* QR Code generator Modal */}
       {showQrModal && activeSession && (
         <div className="fixed inset-0 z-[1500] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl space-y-6">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <h3 className="font-bold text-white text-sm">QR Code Attendance Link</h3>
+          <div className="w-full max-w-sm bg-ct-card-solid border border-ct-border rounded-2xl p-6 shadow-2xl space-y-6">
+            <div className="flex items-center justify-between border-b border-ct-border pb-3">
+              <h3 className="font-bold text-ct-text text-sm">QR Code Attendance Link</h3>
               <button
                 onClick={() => setShowQrModal(false)}
-                className="p-1 hover:bg-zinc-800 text-zinc-500 hover:text-white rounded-lg transition-colors cursor-pointer"
+                className="p-1 hover:bg-ct-card text-ct-muted hover:text-ct-text rounded-lg transition-colors cursor-pointer"
               >
                 <X className="w-4.5 h-4.5" />
               </button>
@@ -1697,12 +1745,12 @@ export default function Dashboard() {
                   <img src={qrCodeUrl} alt="Session QR" className="w-56 h-56" />
                 </div>
               ) : (
-                <div className="w-56 h-56 bg-zinc-950 flex items-center justify-center rounded-xl animate-pulse text-zinc-500 text-xs">
+                <div className="w-56 h-56 bg-ct-input flex items-center justify-center rounded-xl animate-pulse text-ct-muted text-xs">
                   Generating QR code...
                 </div>
               )}
 
-              <p className="text-zinc-400 text-center text-xs leading-relaxed">
+              <p className="text-ct-muted text-center text-xs leading-relaxed">
                 Students scan this QR code or navigate to the link below to verify geofenced attendance.
               </p>
 
@@ -1710,29 +1758,29 @@ export default function Dashboard() {
               <div className="flex gap-3 w-full">
                 <button
                   onClick={downloadQrCode}
-                  className="flex-1 py-2 px-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer text-center"
+                  className="flex-1 py-2 px-3 bg-ct-card hover:bg-ct-card-solid border border-ct-border text-ct-text rounded-xl text-xs font-bold transition-all cursor-pointer text-center"
                 >
                   Download QR
                 </button>
                 <button
                   onClick={handleRegenerateQr}
-                  className="flex-1 py-2 px-3 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800/80 text-white rounded-xl text-xs font-bold transition-all cursor-pointer text-center"
+                  className="flex-1 py-2 px-3 bg-ct-input hover:bg-ct-card border border-ct-border text-ct-text rounded-xl text-xs font-bold transition-all cursor-pointer text-center"
                 >
                   Regenerate QR
                 </button>
               </div>
 
               {/* Copy URL bar */}
-              <div className="w-full flex gap-2 bg-zinc-950 p-2.5 rounded-xl border border-zinc-850">
+              <div className="w-full flex gap-2 bg-ct-input p-2.5 rounded-xl border border-ct-border">
                 <input
                   type="text"
                   readOnly
                   value={`${getStudentAccessOrigin()}/join/${activeSession.id}`}
-                  className="flex-1 bg-transparent text-[10px] text-zinc-350 focus:outline-none truncate"
+                  className="flex-1 bg-transparent text-[10px] text-ct-muted focus:outline-none truncate"
                 />
                 <button
                   onClick={copySessionLink}
-                  className="p-1.5 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-lg transition-colors cursor-pointer flex-shrink-0"
+                  className="p-1.5 hover:bg-ct-card text-ct-muted hover:text-ct-text rounded-lg transition-colors cursor-pointer flex-shrink-0"
                 >
                   {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
                 </button>

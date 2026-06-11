@@ -74,6 +74,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
   const locationHistoryRef = useRef<{ lat: number; lng: number }[]>([])
   const [accuracyIgnored, setAccuracyIgnored] = useState<boolean>(false)
   const [lastIgnoredAccuracy, setLastIgnoredAccuracy] = useState<number | null>(null)
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null)
 
   // Diagnostics states
   const [isInsecureContext, setIsInsecureContext] = useState(false)
@@ -245,6 +246,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
       return
     }
     setAccuracyIgnored(false)
+    setGpsAccuracy(accuracy)
 
     setTrackingStatus('tracking')
     setGpsError(null) // Reset errors on successful location acquisition
@@ -604,19 +606,63 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     }
   }, [insideRadius, notificationPermission])
 
-  // Attempt to mark student offline when closing tab
+  // Handle background tab recovery and network reconnection
   useEffect(() => {
     if (!student || !sessionId) return
 
     const handleVisibilityChange = () => {
-      // Keep background tracking going.
+      if (document.visibilityState === 'visible') {
+        console.log('[Visibility] Tab became visible — triggering location refresh and socket re-join')
+        // Re-emit join event to ensure server knows we're back
+        if (socketRef.current?.connected) {
+          socketRef.current.emit('join-room', sessionId)
+          socketRef.current.emit('student-joined', {
+            roomId: sessionId,
+            student: {
+              id: student.id,
+              name: student.name,
+              roll_number: student.rollNumber,
+              department: student.department
+            },
+            attendance: {
+              studentId: student.id,
+              status: 'Active',
+              joinedAt: new Date().toISOString()
+            }
+          })
+        }
+        // Force a fresh location update
+        if (navigator.geolocation && trackingStatusRef.current === 'tracking') {
+          navigator.geolocation.getCurrentPosition(handleSuccess, () => {}, geoOptions)
+        }
+      }
     }
 
-    window.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => {
-      window.removeEventListener('visibilitychange', handleVisibilityChange)
+    const handleOnline = () => {
+      console.log('[Network] Back online — reconnecting socket and resuming tracking')
+      if (socketRef.current && !socketRef.current.connected) {
+        socketRef.current.connect()
+      }
+      if (trackingStatusRef.current === 'error') {
+        handleRetry()
+      }
     }
-  }, [student, sessionId])
+
+    const handleOffline = () => {
+      console.log('[Network] Device went offline')
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [student, sessionId, handleSuccess, handleRetry])
+
 
   if (loading) {
     return (
@@ -883,6 +929,37 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
                     Last check-in heartbeat: {lastUpdated.toLocaleTimeString()}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* GPS Accuracy Indicator */}
+            {gpsAccuracy !== null && trackingStatus === 'tracking' && (
+              <div className="bg-ct-bg/60 border border-ct-border rounded-xl p-4 space-y-2 text-left">
+                <div className="flex justify-between items-center text-xs text-ct-muted">
+                  <span>GPS Accuracy</span>
+                  <span className={`font-bold ${
+                    gpsAccuracy <= 10 ? 'text-emerald-400' :
+                    gpsAccuracy <= 30 ? 'text-emerald-400' :
+                    gpsAccuracy <= 60 ? 'text-amber-400' :
+                    'text-red-400'
+                  }`}>
+                    {gpsAccuracy <= 10 ? '🟢 Excellent' :
+                     gpsAccuracy <= 30 ? '🟢 Good' :
+                     gpsAccuracy <= 60 ? '🟡 Fair' :
+                     '🔴 Poor'}
+                    {' '}({Math.round(gpsAccuracy)}m)
+                  </span>
+                </div>
+                <div className="w-full h-1.5 bg-ct-border rounded-full overflow-hidden">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      gpsAccuracy <= 10 ? 'bg-emerald-500 w-full' :
+                      gpsAccuracy <= 30 ? 'bg-emerald-500 w-3/4' :
+                      gpsAccuracy <= 60 ? 'bg-amber-500 w-1/2' :
+                      'bg-red-500 w-1/4'
+                    }`}
+                  />
+                </div>
               </div>
             )}
 
