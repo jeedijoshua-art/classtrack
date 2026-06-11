@@ -7,7 +7,8 @@ const trackLocationSchema = z.object({
   studentId: z.string().uuid('Invalid student ID'),
   sessionId: z.string().uuid('Invalid session ID'),
   latitude: z.number(),
-  longitude: z.number()
+  longitude: z.number(),
+  status: z.enum(['Inside', 'Warning', 'Outside']).optional()
 })
 
 // POST: Process student live coordinates
@@ -20,7 +21,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 })
     }
 
-    const { studentId, sessionId, latitude, longitude } = parsed.data
+    const { studentId, sessionId, latitude, longitude, status } = parsed.data
 
     // 1. Fetch classroom coordinates
     const session = await runWithRetry(() => db.session.findUnique({
@@ -50,7 +51,13 @@ export async function POST(request: NextRequest) {
       longitude
     )
 
-    const insideRadius = distance <= session.radius
+    // Baseline calculation, frontend 3-tick takes precedence
+    let computedStatus = 'Inside'
+    if (distance > session.radius && distance <= session.radius + 10) computedStatus = 'Warning'
+    else if (distance > session.radius + 10) computedStatus = 'Outside'
+
+    const finalStatus = status || computedStatus
+    const insideRadius = finalStatus === 'Inside' || finalStatus === 'Warning'
 
     // 3. Upsert student's coordinate history
     await runWithRetry(() => db.locationUpdate.upsert({
@@ -70,16 +77,17 @@ export async function POST(request: NextRequest) {
       }
     }))
 
-    // 4. Update attendance status to Inside/Outside based on current boundary location
+    // 4. Update attendance status based on the validated frontend status
     await runWithRetry(() => db.attendance.updateMany({
       where: { sessionId, studentId },
       data: {
-        status: insideRadius ? 'Inside' : 'Outside'
+        status: finalStatus
       }
     }))
 
     return NextResponse.json({
       success: true,
+      status: finalStatus,
       insideRadius,
       distance: Math.round(distance),
       radius: session.radius

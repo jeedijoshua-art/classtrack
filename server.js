@@ -122,6 +122,11 @@ app.prepare().then(() => {
       console.log(`[Socket] Broadcast: Radius updated to ${radius} in room ${roomId}`)
     })
 
+    // 6. Latency ping
+    socket.on('client-ping', (timestamp) => {
+      socket.emit('client-pong', timestamp)
+    })
+
     socket.on('disconnect', async () => {
       console.log(`[Socket] Client disconnected: ${socket.id}`)
       if (socket.studentId && socket.roomId) {

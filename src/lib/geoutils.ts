@@ -3,6 +3,53 @@
  */
 
 /**
+ * 1D Kalman Filter for smoothing GPS coordinates.
+ * Helps eliminate sudden jumps and sensor noise.
+ */
+export class KalmanFilter {
+  private r: number; // Noise covariance (how much we trust the measurement)
+  private q: number; // Process covariance (how fast we expect the value to change)
+  private a: number; // State vector
+  private p: number; // Estimation error covariance
+  private x: number; // Current estimation
+
+  /**
+   * @param r Sensor noise (higher = trust measurement less, smooth more) e.g., 0.01
+   * @param q Process noise (higher = expect rapid changes, smooth less) e.g., 0.001
+   */
+  constructor(r: number = 0.01, q: number = 0.001) {
+    this.r = r;
+    this.q = q;
+    this.a = 1;
+    this.p = 1;
+    this.x = NaN;
+  }
+
+  /**
+   * Filter a new measurement.
+   * @param measurement The new noisy coordinate value.
+   * @returns The smoothed coordinate value.
+   */
+  filter(measurement: number): number {
+    if (Number.isNaN(this.x)) {
+      this.x = measurement;
+      this.p = 1;
+      return this.x;
+    }
+
+    // Prediction update
+    this.p = this.p + this.q;
+
+    // Measurement update
+    const k = this.p / (this.p + this.r);
+    this.x = this.x + k * (measurement - this.x);
+    this.p = (1 - k) * this.p;
+
+    return this.x;
+  }
+}
+
+/**
  * Calculates the distance between two coordinates in meters using the Haversine formula.
  * @param lat1 Latitude of point 1 (Classroom)
  * @param lon1 Longitude of point 1 (Classroom)

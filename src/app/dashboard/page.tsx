@@ -166,6 +166,7 @@ export default function Dashboard() {
   } | null>(null)
   const [networkStatus, setNetworkStatus] = useState<'Ready' | 'Error'>('Ready')
   const [copiedNetworkUrl, setCopiedNetworkUrl] = useState(false)
+  const [latency, setLatency] = useState<number | null>(null)
 
   // Helper to get the correct student access origin dynamically
   const getStudentAccessOrigin = useCallback(() => {
@@ -445,6 +446,18 @@ export default function Dashboard() {
 
     socket.emit('join-room', activeSession.id)
 
+    // Latency Ping System
+    let pingInterval: NodeJS.Timeout
+    socket.on('client-pong', (start: number) => {
+      setLatency(Date.now() - start)
+    })
+
+    socket.on('connect', () => {
+      pingInterval = setInterval(() => {
+        socket.emit('client-ping', Date.now())
+      }, 5000)
+    })
+
     // 1. Listen to new students checking in
     socket.on('student-joined', ({ student, attendance }: { student: any; attendance: any }) => {
       setStudents((prev) => ({
@@ -544,6 +557,9 @@ export default function Dashboard() {
     })
 
     return () => {
+      socket.off('client-pong')
+      socket.off('connect')
+      if (pingInterval) clearInterval(pingInterval)
       socket.disconnect()
     }
   }, [activeSession, students, triggerAlert])
@@ -1220,6 +1236,17 @@ export default function Dashboard() {
                       <span>Security:</span>
                       <span className="text-emerald-400 font-bold">Secure Connection Active</span>
                     </div>
+                    <div className="flex justify-between text-[9px]">
+                      <span>Latency (Ping):</span>
+                      <span className={`font-mono font-semibold ${
+                        latency === null ? 'text-ct-muted' : 
+                        latency < 100 ? 'text-emerald-400' :
+                        latency < 300 ? 'text-amber-400' :
+                        'text-rose-400'
+                      }`}>
+                        {latency === null ? '--' : `${latency}ms`}
+                      </span>
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -1230,6 +1257,17 @@ export default function Dashboard() {
                     <div className="flex justify-between items-center">
                       <span>Port:</span>
                       <span className="font-mono text-ct-text font-semibold">{networkInfo.port}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Latency (Ping):</span>
+                      <span className={`font-mono font-semibold ${
+                        latency === null ? 'text-ct-muted' : 
+                        latency < 100 ? 'text-emerald-400' :
+                        latency < 300 ? 'text-amber-400' :
+                        'text-rose-400'
+                      }`}>
+                        {latency === null ? '--' : `${latency}ms`}
+                      </span>
                     </div>
                   </>
                 )}

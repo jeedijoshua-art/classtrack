@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, use, Suspense, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Compass, ShieldAlert, ShieldCheck, MapPin, Radio, Bell, AlertTriangle, Sun, Moon } from 'lucide-react'
 import { io } from 'socket.io-client'
+import { KalmanFilter, getDistanceInMeters } from '@/lib/geoutils'
 
 interface Student {
   id: string
@@ -15,8 +16,8 @@ interface Student {
 // Geolocation standard configurations to maximize accuracy and speed up on mobile devices
 const geoOptions = {
   enableHighAccuracy: true,
-  timeout: 15000, // 15 seconds to allow cold-start GPS sensors to acquire satellite lock
-  maximumAge: 2000 // allow slightly cached location (2s) to speed up response
+  timeout: 10000, // 10 seconds timeout for high-accuracy mode
+  maximumAge: 0 // Do not use cached locations, force real-time readings
 }
 
 function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }> }) {
@@ -69,6 +70,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
   const [radius, setRadius] = useState<number | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [socketConnected, setSocketConnected] = useState(false)
+  const [latency, setLatency] = useState<number | null>(null)
 
   // Location history ref for smoothing
   const locationHistoryRef = useRef<{ lat: number; lng: number }[]>([])
@@ -83,6 +85,30 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
   const [retryCount, setRetryCount] = useState(0)
   const [deviceDetails, setDeviceDetails] = useState<string>('Detecting...')
   const [currentUrl, setCurrentUrl] = useState<string>('Detecting...')
+
+  // Advanced tracking and geofencing states
+  const kalmanLatRef = useRef<KalmanFilter | null>(null)
+  const kalmanLngRef = useRef<KalmanFilter | null>(null)
+  const lastSyncTimeRef = useRef<number>(0)
+  const lastSyncLocRef = useRef<{lat: number, lng: number} | null>(null)
+  const consecutiveStatesRef = useRef<{ status: 'Inside' | 'Warning' | 'Outside' | null, count: number }>({ status: null, count: 0 })
+  const [currentValidatedStatus, setCurrentValidatedStatus] = useState<'Inside' | 'Warning' | 'Outside' | null>(null)
+
+  // Developer Mode
+  const [devModeClicks, setDevModeClicks] = useState(0)
+  const [isDevMode, setIsDevMode] = useState(false)
+
+  const handleLogoClick = () => {
+    setDevModeClicks(prev => {
+      const newCount = prev + 1
+      if (newCount >= 5) {
+        setIsDevMode(true)
+        triggerInAppNotification('Developer Mode Activated', 'success')
+        return 0
+      }
+      return newCount
+    })
+  }
 
   // Triggers and refs for clean watch recovery
   const [watchTrigger, setWatchTrigger] = useState(0)
@@ -238,9 +264,9 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     console.log(`GPS SUCCESS\nlat: ${latitude}\nlng: ${longitude}`)
     logGeolocationStatus('SUCCESS_CALLBACK', `Lat: ${latitude}, Lng: ${longitude}, Acc: ${accuracy}m`)
 
-    // Filter out low accuracy cell-tower or WiFi fallback updates (> 60m accuracy)
-    if (accuracy > 60) {
-      console.warn(`[GPS Jitter Filtered] Discarding reading with poor accuracy: ${accuracy}m (> 60m)`)
+    // Filter out low accuracy cell-tower or WiFi fallback updates (> 50m accuracy)
+    if (accuracy > 50) {
+      console.warn(`[GPS Jitter Filtered] Discarding reading with poor accuracy: ${accuracy}m (> 50m)`)
       setLastIgnoredAccuracy(accuracy)
       setAccuracyIgnored(true)
       return
@@ -253,9 +279,17 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     setError(null) // Clear any previous error states
     setPermissionState('granted') // Geolocation succeeded, so permission must be granted
 
-    // Add current position to sliding history
-    const history = [...locationHistoryRef.current, { lat: latitude, lng: longitude }]
-    if (history.length > 3) {
+    // Initialize Kalman filters if not present
+    if (!kalmanLatRef.current) kalmanLatRef.current = new KalmanFilter(0.01, 0.001)
+    if (!kalmanLngRef.current) kalmanLngRef.current = new KalmanFilter(0.01, 0.001)
+
+    // Apply Kalman filter
+    const kLat = kalmanLatRef.current.filter(latitude)
+    const kLng = kalmanLngRef.current.filter(longitude)
+
+    // Add kalman-filtered position to sliding history
+    const history = [...locationHistoryRef.current, { lat: kLat, lng: kLng }]
+    if (history.length > 5) {
       history.shift()
     }
     locationHistoryRef.current = history
@@ -264,7 +298,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     const avgLat = history.reduce((sum, c) => sum + c.lat, 0) / history.length
     const avgLng = history.reduce((sum, c) => sum + c.lng, 0) / history.length
 
-    console.log(`GPS SMOOTHED\nlat: ${avgLat}\nlng: ${avgLng}`)
+    console.log(`GPS SMOOTHED & FILTERED\nlat: ${avgLat}\nlng: ${avgLng}`)
 
     setCoords({ lat: avgLat, lng: avgLng })
 
@@ -272,6 +306,38 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
       console.warn('[Geolocation Success Callback] Student identity not loaded yet. Ignoring POST heartbeat.')
       return
     }
+
+    const now = Date.now()
+    const timeSinceSync = now - lastSyncTimeRef.current
+    
+    // Adaptive Throttling Heartbeat
+    let shouldSync = false
+    let distMoved = 0
+    if (!lastSyncLocRef.current) {
+      shouldSync = true
+    } else {
+      distMoved = getDistanceInMeters(
+        lastSyncLocRef.current.lat, 
+        lastSyncLocRef.current.lng, 
+        avgLat, 
+        avgLng
+      )
+      if (distMoved < 2) {
+        // Stationary: sync every 10s
+        if (timeSinceSync >= 10000) shouldSync = true
+      } else {
+        // Moving: sync every 4s
+        if (timeSinceSync >= 4000) shouldSync = true
+      }
+    }
+
+    if (!shouldSync) {
+      // Return early, map already updated via setCoords
+      return
+    }
+
+    lastSyncTimeRef.current = now
+    lastSyncLocRef.current = { lat: avgLat, lng: avgLng }
 
     try {
       console.log(`[Geolocation API Request] Sending location to /api/location for student: ${currentStudent.id}, session: ${currentSessionId}`)
@@ -282,16 +348,55 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
           studentId: currentStudent.id,
           sessionId: currentSessionId,
           latitude: avgLat,
-          longitude: avgLng
+          longitude: avgLng,
+          status: currentValidatedStatus || undefined
         })
       })
 
       const data = await res.json()
       console.log('[Geolocation API Response] Status:', res.status, 'Data:', data)
       if (res.ok) {
-        setInsideRadius(data.insideRadius)
-        setDistance(data.distance)
-        setRadius(data.radius)
+        const dist = data.distance
+        const rad = data.radius
+
+        // Calculate 3-tick validation
+        let computedState: 'Inside' | 'Warning' | 'Outside' = 'Inside'
+        if (dist <= rad) computedState = 'Inside'
+        else if (dist <= rad + 10) computedState = 'Warning'
+        else computedState = 'Outside'
+
+        if (consecutiveStatesRef.current.status === computedState) {
+          consecutiveStatesRef.current.count++
+        } else {
+          consecutiveStatesRef.current.status = computedState
+          consecutiveStatesRef.current.count = 1
+        }
+
+        let validatedStatusToEmit = currentValidatedStatus || computedState
+        if (consecutiveStatesRef.current.count >= 3) {
+          if (currentValidatedStatus !== computedState) {
+            console.log(`[Geofence] 3 consecutive ticks matched for ${computedState}. Updating validated status.`)
+            setCurrentValidatedStatus(computedState)
+            validatedStatusToEmit = computedState
+            
+            // Re-sync immediately to backend with the new validated state
+            fetch('/api/location', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                studentId: currentStudent.id,
+                sessionId: currentSessionId,
+                latitude: avgLat,
+                longitude: avgLng,
+                status: computedState
+              })
+            }).catch(e => console.error(e))
+          }
+        }
+
+        setInsideRadius(validatedStatusToEmit === 'Inside' || validatedStatusToEmit === 'Warning')
+        setDistance(dist)
+        setRadius(rad)
         setLastUpdated(new Date())
 
         // Emit location update over Socket.io
@@ -302,7 +407,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
               student_id: currentStudent.id,
               latitude: avgLat,
               longitude: avgLng,
-              inside_radius: data.insideRadius,
+              inside_radius: validatedStatusToEmit === 'Inside' || validatedStatusToEmit === 'Warning',
+              status: validatedStatusToEmit,
               last_seen: new Date().toISOString()
             }
           })
@@ -411,29 +517,47 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
       )
     }
 
+    socket.on('disconnect', () => {
+      setSocketConnected(false)
+      console.log('[Socket] Disconnected from server')
+    })
+
+    // Latency Ping System
+    let pingInterval: NodeJS.Timeout
+    socket.on('client-pong', (start: number) => {
+      setLatency(Date.now() - start)
+    })
+
     socket.on('connect', () => {
       setSocketConnected(true)
       console.log('[Socket] Connected, joining room:', sessionId)
       socket.emit('join-room', sessionId)
-      socket.emit('student-joined', {
-        roomId: sessionId,
-        student: {
-          id: student.id,
-          name: student.name,
-          roll_number: student.rollNumber,
-          department: student.department
-        },
-        attendance: {
-          studentId: student.id,
-          status: 'Active',
-          joinedAt: new Date().toISOString()
-        }
-      })
-    })
 
-    socket.on('disconnect', () => {
-      setSocketConnected(false)
-      console.log('[Socket] Disconnected from server')
+      // Only re-emit student joined if we have the student object
+      if (studentRef.current) {
+        socket.emit('student-joined', {
+          roomId: sessionId,
+          student: {
+            id: studentRef.current.id,
+            name: studentRef.current.name,
+            roll_number: studentRef.current.rollNumber,
+            department: studentRef.current.department
+          },
+          attendance: {
+            studentId: studentRef.current.id,
+            status: currentValidatedStatus || 'Active',
+            joinedAt: new Date().toISOString()
+          }
+        })
+      }
+      
+      // Force an immediate location sync when reconnecting to restore state
+      triggerLocationCheck()
+
+      // Start pinging
+      pingInterval = setInterval(() => {
+        socket.emit('client-ping', Date.now())
+      }, 5000)
     })
 
     // Listen for live radius adjustments from teacher
@@ -447,9 +571,11 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
       socket.off('connect')
       socket.off('disconnect')
       socket.off('radius-update')
+      socket.off('client-pong')
+      if (pingInterval) clearInterval(pingInterval)
       socket.disconnect()
     }
-  }, [student, sessionId, handleSuccess, handleError, logGeolocationStatus, hasOnboarded])
+  }, [sessionId, handleSuccess, handleError, logGeolocationStatus, hasOnboarded])
 
   // 2. Fetch student info from search param or localStorage
   useEffect(() => {
@@ -815,7 +941,10 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
             <Radio className={`w-3.5 h-3.5 ${insideRadius !== null ? 'text-violet-400 animate-ping' : ''}`} />
             Live Attendance Session Active
           </div>
-          <h2 className="text-3xl font-extrabold text-ct-text tracking-tight">
+          <h2 
+            className="text-3xl font-extrabold text-ct-text tracking-tight cursor-default select-none"
+            onClick={handleLogoClick}
+          >
             ClassTrack Tracker
           </h2>
           <p className="mt-1.5 text-ct-muted text-sm">
@@ -867,7 +996,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
                 <p className="text-ct-muted text-xs mt-1">Please allow browser location permissions if prompted.</p>
               </div>
             </div>
-          ) : insideRadius ? (
+          ) : currentValidatedStatus === 'Inside' ? (
             <div className="flex flex-col items-center py-6 text-center space-y-4">
               <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
                 <ShieldCheck className="w-9 h-9" />
@@ -875,6 +1004,18 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
               <div className="space-y-1">
                 <h3 className="text-xl font-bold text-emerald-400">Inside Classroom</h3>
                 <p className="text-ct-muted text-sm">Attendance status: <span className="text-emerald-400 font-semibold">Verified Active</span></p>
+              </div>
+            </div>
+          ) : currentValidatedStatus === 'Warning' ? (
+            <div className="flex flex-col items-center py-6 text-center space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 animate-pulse">
+                <AlertTriangle className="w-9 h-9" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-bold text-amber-400">Warning Zone</h3>
+                <p className="text-ct-text text-sm font-medium">
+                  You are near the classroom boundary. Return to the center.
+                </p>
               </div>
             </div>
           ) : (
@@ -939,13 +1080,13 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
                   <span>GPS Accuracy</span>
                   <span className={`font-bold ${
                     gpsAccuracy <= 10 ? 'text-emerald-400' :
-                    gpsAccuracy <= 30 ? 'text-emerald-400' :
-                    gpsAccuracy <= 60 ? 'text-amber-400' :
+                    gpsAccuracy <= 25 ? 'text-emerald-400' :
+                    gpsAccuracy <= 50 ? 'text-amber-400' :
                     'text-red-400'
                   }`}>
                     {gpsAccuracy <= 10 ? '🟢 Excellent' :
-                     gpsAccuracy <= 30 ? '🟢 Good' :
-                     gpsAccuracy <= 60 ? '🟡 Fair' :
+                     gpsAccuracy <= 25 ? '🟢 Good' :
+                     gpsAccuracy <= 50 ? '🟡 Fair' :
                      '🔴 Poor'}
                     {' '}({Math.round(gpsAccuracy)}m)
                   </span>
@@ -954,8 +1095,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
                   <div 
                     className={`h-full rounded-full transition-all duration-500 ${
                       gpsAccuracy <= 10 ? 'bg-emerald-500 w-full' :
-                      gpsAccuracy <= 30 ? 'bg-emerald-500 w-3/4' :
-                      gpsAccuracy <= 60 ? 'bg-amber-500 w-1/2' :
+                      gpsAccuracy <= 25 ? 'bg-emerald-500 w-3/4' :
+                      gpsAccuracy <= 50 ? 'bg-amber-500 w-1/2' :
                       'bg-red-500 w-1/4'
                     }`}
                   />
@@ -984,9 +1125,14 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span>Port:</span>
-                  <span className="font-mono text-ct-text font-semibold">
-                    {typeof window !== 'undefined' ? (window.location.port || (window.location.protocol === 'https:' ? '443' : '80')) : '...'}
+                  <span>Latency (Ping):</span>
+                  <span className={`font-mono font-semibold ${
+                    latency === null ? 'text-ct-muted' : 
+                    latency < 100 ? 'text-emerald-400' :
+                    latency < 300 ? 'text-amber-400' :
+                    'text-rose-400'
+                  }`}>
+                    {latency === null ? '--' : `${latency}ms`}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
@@ -1001,7 +1147,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
             </div>
           </div>
 
-          {/* Always Visible Diagnostics Debug Panel */}
+          {/* Diagnostics Debug Panel (Hidden behind Dev Mode) */}
+          {isDevMode && (
           <div className="bg-ct-bg/75 border border-ct-border rounded-xl p-4 mt-4 space-y-3 text-[11px] text-ct-muted text-left font-mono">
             <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider text-ct-muted border-b border-ct-border pb-2 mb-1 font-sans">
               <span>GPS & Geolocation Debug</span>
@@ -1140,6 +1287,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
               </button>
             </div>
           </div>
+          )}
 
           {/* Browser Notification Request bar */}
           {'Notification' in window && notificationPermission !== 'granted' && (
