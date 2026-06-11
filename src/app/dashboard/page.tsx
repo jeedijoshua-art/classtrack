@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { io } from 'socket.io-client'
 import {
@@ -27,7 +27,8 @@ import {
   Activity,
   Download,
   Sun,
-  Moon
+  Moon,
+  Menu
 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import QRCode from 'qrcode'
@@ -153,6 +154,8 @@ export default function Dashboard() {
   const [qrCodeUrl, setQrCodeUrl] = useState('')
   const [copiedLink, setCopiedLink] = useState(false)
   const [soundEnabled, setSoundEnabled] = useState(true)
+  const [toasts, setToasts] = useState<ToastNotification[]>([])
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false)
 
   // Network Information states
   const [networkInfo, setNetworkInfo] = useState<{
@@ -165,7 +168,7 @@ export default function Dashboard() {
   const [copiedNetworkUrl, setCopiedNetworkUrl] = useState(false)
 
   // Helper to get the correct student access origin dynamically
-  const getStudentAccessOrigin = () => {
+  const getStudentAccessOrigin = useCallback(() => {
     if (typeof window === 'undefined') return ''
     const hostname = window.location.hostname
     const isLocal = 
@@ -177,10 +180,99 @@ export default function Dashboard() {
       return networkInfo.studentAccessUrl
     }
     return window.location.origin
-  }
+  }, [networkInfo])
+
+  // Trigger audio alert and display a beautiful toast message on dashboard
+  const triggerAlert = useCallback((message: string, type: 'info' | 'success' | 'warning' | 'error', title?: string) => {
+    // 1. Play Audio chime
+    if (soundEnabled) {
+      try {
+        const frequency = type === 'error' ? 220 : type === 'warning' ? 440 : type === 'success' ? 660 : 520
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
+        const oscillator = audioCtx.createOscillator()
+        const gainNode = audioCtx.createGain()
+
+        oscillator.type = 'sine'
+        oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime)
+        gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime)
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4)
+
+        oscillator.connect(gainNode)
+        gainNode.connect(audioCtx.destination)
+
+        oscillator.start()
+        oscillator.stop(audioCtx.currentTime + 0.4)
+      } catch (err) {
+        console.warn('Audio synthesis blocked by browser auto-play settings.')
+      }
+    }
+
+    // 2. Add Toast message
+    const newToast: ToastNotification = {
+      id: Math.random().toString(),
+      title: title || (type === 'success' ? 'Success' : type === 'warning' ? 'Warning' : type === 'error' ? 'Error' : 'Notification'),
+      message,
+      type,
+      timestamp: new Date()
+    }
+    setToasts((prev) => [newToast, ...prev.slice(0, 4)]) // Keep up to 5 toast logs
+
+    // Dismiss toast after 6 seconds
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== newToast.id))
+    }, 6000)
+  }, [soundEnabled])
+
+  // Load students, attendance, and locations for an active session
+  const loadSessionData = useCallback(async (sessionId: string) => {
+    try {
+      const res = await fetch(`/api/dashboard?sessionId=${sessionId}`)
+      if (!res.ok) return
+      const data = await res.json()
+
+      const studentsMap: Record<string, Student> = {}
+      data.students?.forEach((s: any) => {
+        studentsMap[s.id] = {
+          id: s.id,
+          name: s.name,
+          roll_number: s.rollNumber,
+          department: s.department,
+          created_at: s.createdAt
+        }
+      })
+
+      const locationsMap: Record<string, Location> = {}
+      data.locations?.forEach((l: any) => {
+        locationsMap[l.studentId] = {
+          student_id: l.studentId,
+          latitude: l.latitude,
+          longitude: l.longitude,
+          last_seen: l.lastSeen,
+          inside_radius: l.insideRadius
+        }
+      })
+
+      const attendanceMap: Record<string, Attendance> = {}
+      data.attendance?.forEach((a: any) => {
+        attendanceMap[a.studentId] = {
+          student_id: a.studentId,
+          ip_address: a.ipAddress,
+          user_agent: a.userAgent,
+          device_type: a.deviceType,
+          browser_info: a.browserInfo,
+          joined_at: a.joinedAt,
+          status: a.status
+        }
+      })
+      setStudents(studentsMap)
+      setLocations(locationsMap)
+      setAttendanceRecords(attendanceMap)
+    } catch (err) {
+      console.error('Error loading session details:', err)
+    }
+  }, [])
 
   // Notifications/Toasts list
-  const [toasts, setToasts] = useState<ToastNotification[]>([])
   const [searchQuery, setSearchQuery] = useState('')
 
   // Time left state
@@ -283,7 +375,7 @@ export default function Dashboard() {
     }
 
     loadInitialData()
-  }, [router])
+  }, [router, loadSessionData])
 
   // Poll session data as a fallback when socket is disconnected
   useEffect(() => {
@@ -299,56 +391,9 @@ export default function Dashboard() {
     }, 5000)
 
     return () => clearInterval(pollInterval)
-  }, [activeSession])
+  }, [activeSession, loadSessionData])
 
-  // Load students, attendance, and locations for an active session
-  async function loadSessionData(sessionId: string) {
-    try {
-      const res = await fetch(`/api/dashboard?sessionId=${sessionId}`)
-      if (!res.ok) return
-      const data = await res.json()
 
-      const studentsMap: Record<string, Student> = {}
-      data.students?.forEach((s: any) => {
-        studentsMap[s.id] = {
-          id: s.id,
-          name: s.name,
-          roll_number: s.rollNumber,
-          department: s.department,
-          created_at: s.createdAt
-        }
-      })
-
-      const locationsMap: Record<string, Location> = {}
-      data.locations?.forEach((l: any) => {
-        locationsMap[l.studentId] = {
-          student_id: l.studentId,
-          latitude: l.latitude,
-          longitude: l.longitude,
-          last_seen: l.lastSeen,
-          inside_radius: l.insideRadius
-        }
-      })
-
-      const attendanceMap: Record<string, Attendance> = {}
-      data.attendance?.forEach((a: any) => {
-        attendanceMap[a.studentId] = {
-          student_id: a.studentId,
-          ip_address: a.ipAddress,
-          user_agent: a.userAgent,
-          device_type: a.deviceType,
-          browser_info: a.browserInfo,
-          joined_at: a.joinedAt,
-          status: a.status
-        }
-      })
-      setStudents(studentsMap)
-      setLocations(locationsMap)
-      setAttendanceRecords(attendanceMap)
-    } catch (err) {
-      console.error('Error loading session details:', err)
-    }
-  }
 
   // 30-second offline check timer
   useEffect(() => {
@@ -389,7 +434,7 @@ export default function Dashboard() {
     }, 4000)
 
     return () => clearInterval(offlineCheckInterval)
-  }, [activeSession, students])
+  }, [activeSession, students, triggerAlert])
 
   // Real-time synchronization using Socket.IO
   useEffect(() => {
@@ -501,7 +546,7 @@ export default function Dashboard() {
     return () => {
       socket.disconnect()
     }
-  }, [activeSession, students])
+  }, [activeSession, students, triggerAlert])
 
   // Session Duration Countdown Timer
   useEffect(() => {
@@ -529,46 +574,7 @@ export default function Dashboard() {
     return () => clearInterval(timer)
   }, [activeSession])
 
-  // Trigger audio alert and display a beautiful toast message on dashboard
-  function triggerAlert(message: string, type: 'info' | 'success' | 'warning' | 'error', title?: string) {
-    // 1. Play Audio chime
-    if (soundEnabled) {
-      try {
-        const frequency = type === 'error' ? 220 : type === 'warning' ? 440 : type === 'success' ? 660 : 520
-        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
-        const oscillator = audioCtx.createOscillator()
-        const gainNode = audioCtx.createGain()
 
-        oscillator.type = 'sine'
-        oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime)
-        gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime)
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4)
-
-        oscillator.connect(gainNode)
-        gainNode.connect(audioCtx.destination)
-
-        oscillator.start()
-        oscillator.stop(audioCtx.currentTime + 0.4)
-      } catch (err) {
-        console.warn('Audio synthesis blocked by browser auto-play settings.')
-      }
-    }
-
-    // 2. Add Toast message
-    const newToast: ToastNotification = {
-      id: Math.random().toString(),
-      title: title || (type === 'success' ? 'Success' : type === 'warning' ? 'Warning' : type === 'error' ? 'Error' : 'Notification'),
-      message,
-      type,
-      timestamp: new Date()
-    }
-    setToasts((prev) => [newToast, ...prev.slice(0, 4)]) // Keep up to 5 toast logs
-
-    // Dismiss toast after 6 seconds
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== newToast.id))
-    }, 6000)
-  }
 
   // Generate QR Code URL whenever active session or networkInfo changes
   useEffect(() => {
@@ -579,7 +585,7 @@ export default function Dashboard() {
         .then((url) => setQrCodeUrl(url))
         .catch((err) => console.error(err))
     }
-  }, [activeSession, networkInfo])
+  }, [activeSession, networkInfo, getStudentAccessOrigin])
 
   // Automatically detect teacher location to initialize classroom position
   const detectLocation = () => {
@@ -944,6 +950,15 @@ export default function Dashboard() {
       {/* Top Header Panel */}
       <header className="flex items-center justify-between px-6 py-4 bg-ct-card border-b border-ct-border backdrop-blur-md z-10 transition-colors">
         <div className="flex items-center gap-3">
+          {/* Mobile Drawer Hamburger Toggle */}
+          <button
+            onClick={() => setIsMobileDrawerOpen(!isMobileDrawerOpen)}
+            className="lg:hidden p-2.5 bg-ct-card hover:bg-ct-card-solid text-ct-muted hover:text-ct-text rounded-xl border border-ct-border cursor-pointer flex items-center justify-center h-10 w-10 shadow-sm"
+            title="Toggle Student List"
+          >
+            {isMobileDrawerOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 shadow-md border border-violet-500/20">
             <MapPin className="w-5 h-5 text-white" />
           </div>
@@ -955,10 +970,10 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Dashboard Actions */}
+        {/* Dashboard Actions (Desktop Only) */}
         {activeSession ? (
-          <div className="flex items-center gap-3">
-            <div className="hidden md:flex items-center gap-4 bg-ct-input border border-ct-border px-4 py-2 rounded-xl text-sm mr-2">
+          <div className="hidden lg:flex items-center gap-3">
+            <div className="flex items-center gap-4 bg-ct-input border border-ct-border px-4 py-2 rounded-xl text-sm mr-2">
               <div className="flex items-center gap-1.5 text-ct-muted">
                 <Clock className="w-4 h-4 text-violet-500 animate-pulse" />
                 <span>Timer:</span>
@@ -1045,10 +1060,20 @@ export default function Dashboard() {
       </header>
 
       {/* Main Grid View */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
         
+        {/* Backdrop for Mobile student drawer */}
+        {isMobileDrawerOpen && (
+          <div
+            className="fixed inset-0 bg-black/60 z-20 lg:hidden backdrop-blur-sm transition-opacity duration-300"
+            onClick={() => setIsMobileDrawerOpen(false)}
+          />
+        )}
+
         {/* Left Panel: Student list monitor */}
-        <aside className="w-80 border-r border-ct-border bg-ct-card flex flex-col flex-shrink-0 transition-colors">
+        <aside className={`fixed lg:relative top-0 bottom-0 left-0 z-30 w-80 border-r border-ct-border bg-ct-card flex flex-col flex-shrink-0 transition-transform duration-300 ease-in-out h-full lg:translate-x-0 ${
+          isMobileDrawerOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        }`}>
           <div className="p-4 border-b border-ct-border">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-bold tracking-wider uppercase text-ct-muted">
@@ -1134,14 +1159,38 @@ export default function Dashboard() {
 
             {networkInfo ? (
               <div className="space-y-2 text-ct-muted text-[10px] leading-relaxed bg-ct-input p-3 rounded-xl border border-ct-border">
-                <div className="flex justify-between items-center">
-                  <span>Host IP:</span>
-                  <span className="font-mono text-ct-text font-semibold">{networkInfo.hostIp}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span>Port:</span>
-                  <span className="font-mono text-ct-text font-semibold">{networkInfo.port}</span>
-                </div>
+                {typeof window !== 'undefined' && 
+                 window.location.hostname !== 'localhost' && 
+                 window.location.hostname !== '127.0.0.1' && 
+                 !/^192\.168\./.test(window.location.hostname) && 
+                 !/^10\./.test(window.location.hostname) && 
+                 !/^172\./.test(window.location.hostname) ? (
+                  <div className="space-y-1.5 font-sans">
+                    <div className="flex items-center gap-1.5 text-emerald-500 font-bold mb-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                      <span>Production Environment</span>
+                    </div>
+                    <div className="flex justify-between text-[9px]">
+                      <span>Protocol:</span>
+                      <span className="text-ct-text font-bold">HTTPS Enabled</span>
+                    </div>
+                    <div className="flex justify-between text-[9px]">
+                      <span>Security:</span>
+                      <span className="text-emerald-400 font-bold">Secure Connection Active</span>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex justify-between items-center">
+                      <span>Host IP:</span>
+                      <span className="font-mono text-ct-text font-semibold">{networkInfo.hostIp}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Port:</span>
+                      <span className="font-mono text-ct-text font-semibold">{networkInfo.port}</span>
+                    </div>
+                  </>
+                )}
                 <div className="border-t border-ct-border/60 my-2 pt-2">
                   <span className="block text-ct-muted text-[9px] uppercase font-bold tracking-wider mb-1">Student Access URL</span>
                   <div className="flex items-center justify-between gap-2 bg-ct-card-solid p-2 rounded-lg border border-ct-border">
@@ -1171,10 +1220,60 @@ export default function Dashboard() {
         </aside>
 
         {/* Center Panel: Map and controls */}
-        <main className="flex-1 relative bg-ct-bg p-6 flex flex-col overflow-hidden transition-colors">
+        <main className="flex-1 relative bg-ct-bg p-4 md:p-6 flex flex-col overflow-y-auto lg:overflow-hidden transition-colors">
           {activeSession ? (
-            <div className="flex flex-col flex-1 gap-6 overflow-hidden">
+            <div className="flex flex-col flex-1 gap-6 lg:overflow-hidden">
               
+              {/* Mobile Control Panel */}
+              <div className="flex flex-col gap-3 lg:hidden p-4 bg-ct-card border border-ct-border rounded-2xl">
+                <div className="flex items-center justify-between text-xs font-bold text-ct-muted uppercase tracking-wider">
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-violet-500 animate-pulse" />
+                    Timer Left:
+                  </span>
+                  <span className="font-mono text-ct-text font-bold">{timeLeft}</span>
+                </div>
+                <div className="text-[10px] text-ct-muted border-t border-ct-border/60 pt-2 mb-1">
+                  Classroom: <span className="text-ct-text font-bold">{activeSession.classroom_name}</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <button
+                    onClick={() => setShowQrModal(true)}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-ct-card-solid border border-ct-border hover:bg-ct-card text-ct-text rounded-xl font-bold transition-all text-[11px] cursor-pointer"
+                  >
+                    <QrCode className="w-3.5 h-3.5 text-violet-500" />
+                    QR Link
+                  </button>
+                  <button
+                    onClick={() => setShowRadiusModal(true)}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-ct-card-solid border border-ct-border hover:bg-ct-card text-ct-text rounded-xl font-bold transition-all text-[11px] cursor-pointer"
+                  >
+                    <Sliders className="w-3.5 h-3.5 text-violet-500" />
+                    Radius ({activeSession.radius}m)
+                  </button>
+                  <button
+                    onClick={() => setShowAnalyticsModal(true)}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-ct-card-solid border border-ct-border hover:bg-ct-card text-ct-text rounded-xl font-bold transition-all text-[11px] cursor-pointer"
+                  >
+                    <Activity className="w-3.5 h-3.5 text-violet-500" />
+                    Analytics
+                  </button>
+                  <button
+                    onClick={exportAttendanceCSV}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-ct-card-solid border border-ct-border hover:bg-ct-card text-ct-text rounded-xl font-bold transition-all text-[11px] cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-violet-500" />
+                    Export CSV
+                  </button>
+                </div>
+                <button
+                  onClick={handleEndSession}
+                  className="w-full py-3 bg-red-650 hover:bg-red-600 text-white rounded-xl font-bold text-xs cursor-pointer mt-1"
+                >
+                  End Session
+                </button>
+              </div>
+
               {/* Top Summary Widget */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 flex-shrink-0">
                 <div className="bg-ct-card border border-ct-border rounded-2xl p-4 flex items-center justify-between transition-all hover:shadow-md">
@@ -1208,7 +1307,7 @@ export default function Dashboard() {
               </div>
 
               {/* Map Panel (occupies 75% height) */}
-              <div className="flex-1 relative min-h-[350px] overflow-hidden">
+              <div className="h-80 lg:h-full lg:flex-1 relative min-h-[320px] lg:min-h-0">
                 <LiveMap
                   classroomLat={activeSession.latitude}
                   classroomLng={activeSession.longitude}
@@ -1310,19 +1409,30 @@ export default function Dashboard() {
                           {parseInt(durationInput) % 60}m
                         </span>
                       </div>
-                      <div className="flex gap-2">
-                        <input
-                          type="number"
-                          min="5"
-                          max="480"
-                          value={durationInput}
-                          onChange={(e) => {
-                            const val = Math.max(5, Math.min(480, parseInt(e.target.value) || 5))
-                            setDurationInput(val.toString())
-                          }}
-                          className="w-20 px-2 py-1.5 bg-ct-input border border-ct-border rounded-lg text-ct-text focus:outline-none focus:ring-1 focus:ring-violet-500 text-xs font-mono text-center"
-                        />
-                        <div className="flex-1 grid grid-cols-4 gap-1">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex gap-3 items-center">
+                          <input
+                            type="range"
+                            min="5"
+                            max="480"
+                            step="5"
+                            value={durationInput}
+                            onChange={(e) => setDurationInput(e.target.value)}
+                            className="flex-1 accent-violet-650 cursor-pointer"
+                          />
+                          <input
+                            type="number"
+                            min="5"
+                            max="480"
+                            value={durationInput}
+                            onChange={(e) => {
+                              const val = Math.max(5, Math.min(480, parseInt(e.target.value) || 5))
+                              setDurationInput(val.toString())
+                            }}
+                            className="w-20 px-2 py-1.5 bg-ct-input border border-ct-border rounded-lg text-ct-text focus:outline-none focus:ring-1 focus:ring-violet-500 text-xs font-mono text-center"
+                          />
+                        </div>
+                        <div className="grid grid-cols-4 gap-1">
                           {['30', '60', '90', '120'].map((preset) => (
                             <button
                               key={preset}
@@ -1584,7 +1694,6 @@ export default function Dashboard() {
               {/* QR Image */}
               {qrCodeUrl ? (
                 <div className="bg-white p-4 rounded-xl border-4 border-white shadow-inner">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={qrCodeUrl} alt="Session QR" className="w-56 h-56" />
                 </div>
               ) : (
@@ -1650,41 +1759,49 @@ export default function Dashboard() {
             <div className="space-y-4">
               <div>
                 <label className="block text-xs text-ct-muted mb-2 font-medium">Classroom Radius (meters)</label>
-                <div className="flex gap-2 items-center">
-                  <button
-                    onClick={() => {
-                      const current = parseInt(newRadiusInput) || 50
-                      setNewRadiusInput(Math.max(10, current - 10).toString())
-                    }}
-                    className="p-2.5 bg-ct-card hover:bg-ct-card-solid text-ct-text rounded-xl border border-ct-border font-bold text-xs flex items-center justify-center w-10 cursor-pointer"
-                  >
-                    -
-                  </button>
-                  <select
-                    value={newRadiusInput}
-                    onChange={(e) => setNewRadiusInput(e.target.value)}
-                    className="flex-1 block px-3 py-2.5 bg-ct-input border border-ct-border rounded-xl text-ct-text focus:outline-none focus:ring-1 focus:ring-violet-500 text-xs font-mono"
-                  >
-                    <option value="10">10m</option>
-                    <option value="15">15m</option>
-                    <option value="20">20m</option>
-                    <option value="30">30m</option>
-                    <option value="40">40m</option>
-                    <option value="50">50m</option>
-                    <option value="75">75m</option>
-                    <option value="100">100m</option>
-                    <option value="150">150m</option>
-                    <option value="200">200m</option>
-                  </select>
-                  <button
-                    onClick={() => {
-                      const current = parseInt(newRadiusInput) || 50
-                      setNewRadiusInput((current + 10).toString())
-                    }}
-                    className="p-2.5 bg-ct-card hover:bg-ct-card-solid text-ct-text rounded-xl border border-ct-border font-bold text-xs flex items-center justify-center w-10 cursor-pointer"
-                  >
-                    +
-                  </button>
+                <div className="flex flex-col gap-3">
+                  <div className="flex gap-3 items-center">
+                    <input
+                      type="range"
+                      min="10"
+                      max="500"
+                      step="5"
+                      value={newRadiusInput}
+                      onChange={(e) => setNewRadiusInput(e.target.value)}
+                      className="flex-1 accent-violet-650 cursor-pointer"
+                    />
+                    <input
+                      type="number"
+                      min="10"
+                      max="500"
+                      value={newRadiusInput}
+                      onChange={(e) => {
+                        const val = Math.max(10, Math.min(500, parseInt(e.target.value) || 10))
+                        setNewRadiusInput(val.toString())
+                      }}
+                      className="w-20 px-2 py-1.5 bg-ct-input border border-ct-border rounded-lg text-ct-text focus:outline-none focus:ring-1 focus:ring-violet-500 text-xs font-mono text-center"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        const current = parseInt(newRadiusInput) || 50
+                        setNewRadiusInput(Math.max(10, current - 10).toString())
+                      }}
+                      className="flex-1 py-1.5 bg-ct-card hover:bg-ct-card-solid text-ct-text rounded-xl border border-ct-border font-bold text-xs cursor-pointer"
+                    >
+                      -10m
+                    </button>
+                    <button
+                      onClick={() => {
+                        const current = parseInt(newRadiusInput) || 50
+                        setNewRadiusInput(Math.min(500, current + 10).toString())
+                      }}
+                      className="flex-1 py-1.5 bg-ct-card hover:bg-ct-card-solid text-ct-text rounded-xl border border-ct-border font-bold text-xs cursor-pointer"
+                    >
+                      +10m
+                    </button>
+                  </div>
                 </div>
               </div>
 

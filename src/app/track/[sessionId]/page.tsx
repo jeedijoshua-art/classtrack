@@ -43,8 +43,10 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     const savedTheme = localStorage.getItem('theme') as 'dark' | 'light' | null
     if (savedTheme) {
       setTheme(savedTheme)
+      document.documentElement.classList.toggle('dark', savedTheme === 'dark')
     } else {
       localStorage.setItem('theme', 'dark')
+      document.documentElement.classList.add('dark')
     }
   }, [])
 
@@ -445,7 +447,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
       socket.off('radius-update')
       socket.disconnect()
     }
-  }, [student, sessionId, handleSuccess, handleError, logGeolocationStatus])
+  }, [student, sessionId, handleSuccess, handleError, logGeolocationStatus, hasOnboarded])
 
   // 2. Fetch student info from search param or localStorage
   useEffect(() => {
@@ -538,7 +540,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
       console.log('[Geolocation] Cleaning up watchPosition. ID:', watchId)
       navigator.geolocation.clearWatch(watchId)
     }
-  }, [student, sessionId, handleSuccess, handleError, logGeolocationStatus, watchTrigger])
+  }, [student, sessionId, handleSuccess, handleError, logGeolocationStatus, watchTrigger, hasOnboarded])
 
 
   // 4. Coordinate tab alerts, browser push, and in-app notifications on geofence transitions

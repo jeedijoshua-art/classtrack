@@ -22,8 +22,10 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
     const saved = localStorage.getItem('theme') as 'dark' | 'light' | null
     if (saved) {
       setTheme(saved)
+      document.documentElement.classList.toggle('dark', saved === 'dark')
     } else {
       localStorage.setItem('theme', 'dark')
+      document.documentElement.classList.add('dark')
     }
   }, [])
 
@@ -234,7 +236,7 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
                       required
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      className="block w-full pl-10 pr-3 py-3 bg-ct-input border border-ct-border rounded-xl text-ct-text placeholder-ct-muted/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 transition-all text-sm font-medium"
+                      className="block w-full pl-10 pr-3 py-3 bg-ct-input border border-ct-border rounded-xl text-ct-text placeholder-ct-muted/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 transition-all text-base md:text-sm font-medium"
                       placeholder="e.g. Joshua Jeedi"
                     />
                   </div>
@@ -254,7 +256,7 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
                       required
                       value={rollNumber}
                       onChange={(e) => setRollNumber(e.target.value)}
-                      className="block w-full pl-10 pr-3 py-3 bg-ct-input border border-ct-border rounded-xl text-ct-text placeholder-ct-muted/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 transition-all text-sm font-medium"
+                      className="block w-full pl-10 pr-3 py-3 bg-ct-input border border-ct-border rounded-xl text-ct-text placeholder-ct-muted/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 transition-all text-base md:text-sm font-medium"
                       placeholder="e.g. 101"
                     />
                   </div>
@@ -274,7 +276,7 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
                       required
                       value={department}
                       onChange={(e) => setDepartment(e.target.value)}
-                      className="block w-full pl-10 pr-3 py-3 bg-ct-input border border-ct-border rounded-xl text-ct-text placeholder-ct-muted/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 transition-all text-sm font-medium"
+                      className="block w-full pl-10 pr-3 py-3 bg-ct-input border border-ct-border rounded-xl text-ct-text placeholder-ct-muted/50 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 transition-all text-base md:text-sm font-medium"
                       placeholder="e.g. Computer Science"
                     />
                   </div>
