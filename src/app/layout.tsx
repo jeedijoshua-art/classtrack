@@ -29,6 +29,11 @@ export const metadata: Metadata = {
       "Verify student presence with GPS geofencing. No app installation required.",
     type: "website",
   },
+  icons: {
+    icon: "/icon.png?v=1",
+    shortcut: "/icon.png?v=1",
+    apple: "/icon.png?v=1",
+  },
 };
 
 export default function RootLayout({
