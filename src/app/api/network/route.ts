@@ -12,7 +12,8 @@ export async function GET(request: NextRequest) {
       const iface = interfaces[name]
       if (iface) {
         for (const net of iface) {
-          // Cast net to any to bypass potential Node.js version TypeScript definition mismatches
+          
+
           const family = typeof (net as any).family === 'string' ? (net as any).family : String((net as any).family)
           if ((family === 'IPv4' || family === '4') && !net.internal) {
             candidates.push({

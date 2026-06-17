@@ -20,7 +20,8 @@ export async function POST(request: NextRequest) {
 
     const { email, password } = parsed.data
 
-    // Fetch Admin profile
+    
+
     const admin = await runWithRetry(() => db.admin.findUnique({
       where: { email }
     }))
@@ -29,13 +30,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 400 })
     }
 
-    // Verify bcrypt hash comparison
+    
+
     const isValid = await bcrypt.compare(password, admin.passwordHash)
     if (!isValid) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 400 })
     }
 
-    // Sign token
+    
+
     const token = signToken({
       id: admin.id,
       email: admin.email,
@@ -51,13 +54,15 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Set HTTP-only cookie
+    
+
     response.cookies.set('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 7 * 24 * 60 * 60 // 7 days
+      maxAge: 7 * 24 * 60 * 60 
+
     })
 
     return response

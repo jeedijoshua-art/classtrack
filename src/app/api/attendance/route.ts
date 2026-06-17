@@ -10,10 +10,12 @@ const joinSessionSchema = z.object({
   sessionId: z.string().uuid('Invalid session ID')
 })
 
-// GET: Fetch attendance records for a session (Admin-only)
+
+
 export async function GET(request: NextRequest) {
   try {
-    // Verify admin token
+    
+
     const token = request.cookies.get('token')?.value
     const admin = token ? verifyToken(token) : null
     if (!admin) {
@@ -41,7 +43,8 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST: Student joins session and marks attendance
+
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -53,7 +56,8 @@ export async function POST(request: NextRequest) {
 
     const { name, rollNumber, department, sessionId } = parsed.data
 
-    // 1. Verify classroom session status
+    
+
     const session = await runWithRetry(() => db.session.findUnique({
       where: { id: sessionId }
     }))
@@ -67,7 +71,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'This attendance session has already ended' }, { status: 400 })
     }
 
-    // Capture student IP and User Agent
+    
+
     const xForwardedFor = request.headers.get('x-forwarded-for')
     let ipAddress = '127.0.0.1'
     if (xForwardedFor) {
@@ -79,7 +84,8 @@ export async function POST(request: NextRequest) {
     const userAgent = request.headers.get('user-agent') || 'Unknown User Agent'
     const { deviceType, browserInfo } = parseUserAgent(userAgent)
 
-    // 2. Check if student already joined this session (prevent duplicates)
+    
+
     const existingStudent = await runWithRetry(() => db.student.findFirst({
       where: {
         sessionId,
@@ -94,7 +100,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create new student profile
+    
+
     const student = await runWithRetry(() => db.student.create({
       data: {
         sessionId,
@@ -104,7 +111,8 @@ export async function POST(request: NextRequest) {
       }
     }))
 
-    // 3. Upsert the attendance log
+    
+
     const attendance = await runWithRetry(() => db.attendance.upsert({
       where: {
         sessionId_studentId: {

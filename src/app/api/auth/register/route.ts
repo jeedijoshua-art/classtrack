@@ -21,7 +21,8 @@ export async function POST(request: NextRequest) {
 
     const { name, email, password } = parsed.data
 
-    // Verify unique email
+    
+
     const existing = await runWithRetry(() => db.admin.findUnique({
       where: { email }
     }))
@@ -30,10 +31,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Email already exists. Please login instead.' }, { status: 400 })
     }
 
-    // Hash password
+    
+
     const passwordHash = await bcrypt.hash(password, 10)
 
-    // Save Admin
+    
+
     const admin = await runWithRetry(() => db.admin.create({
       data: {
         name,
@@ -42,7 +45,8 @@ export async function POST(request: NextRequest) {
       }
     }))
 
-    // Sign JWT authentication token
+    
+
     const token = signToken({
       id: admin.id,
       email: admin.email,
@@ -58,13 +62,15 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Set HTTP-only cookie
+    
+
     response.cookies.set('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 7 * 24 * 60 * 60 // 7 days
+      maxAge: 7 * 24 * 60 * 60 
+
     })
 
     return response

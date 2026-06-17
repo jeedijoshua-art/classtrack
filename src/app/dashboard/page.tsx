@@ -1,5 +1,7 @@
 'use client'
 
+/* eslint-disable react-hooks/preserve-manual-memoization, react-hooks/purity */
+
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { io } from 'socket.io-client'
@@ -33,8 +35,10 @@ import {
 import dynamic from 'next/dynamic'
 import QRCode from 'qrcode'
 
-// Load Leaflet map component dynamically (SSR: false) to prevent 'window is not defined' errors
+
+
 const LiveMap = dynamic(() => import('@/components/LiveMap'), { ssr: false })
+const StudentIntelligenceDrawer = dynamic(() => import('@/components/StudentIntelligenceDrawer'), { ssr: false })
 import { getDistanceInMeters } from '@/lib/geoutils'
 
 interface Session {
@@ -100,7 +104,8 @@ export default function Dashboard() {
   const router = useRouter()
   const socketRef = useRef<any>(null)
 
-  // Theme support state
+  
+
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
 
   useEffect(() => {
@@ -121,15 +126,18 @@ export default function Dashboard() {
     document.documentElement.classList.toggle('dark', nextTheme === 'dark')
   }
 
-  // Teacher Profile
+  
+
   const [teacher, setTeacher] = useState<{ name: string; email: string } | null>(null)
 
-  // Active Session states
+  
+
   const [activeSession, setActiveSession] = useState<Session | null>(null)
   const [sessionsList, setSessionsList] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Creating Session Form states
+  
+
   const [sessionNameInput, setSessionNameInput] = useState('')
   const [classroomNameInput, setClassroomNameInput] = useState('')
   const [radiusInput, setRadiusInput] = useState('50')
@@ -140,13 +148,16 @@ export default function Dashboard() {
   const [showCoordsForm, setShowCoordsForm] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
-  // Data states
+  
+
   const [students, setStudents] = useState<Record<string, Student>>({})
   const [locations, setLocations] = useState<Record<string, Location>>({})
   const [attendanceRecords, setAttendanceRecords] = useState<Record<string, Attendance>>({})
 
-  // UI settings
+  
+
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null)
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [showQrModal, setShowQrModal] = useState(false)
   const [showRadiusModal, setShowRadiusModal] = useState(false)
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false)
@@ -157,7 +168,8 @@ export default function Dashboard() {
   const [toasts, setToasts] = useState<ToastNotification[]>([])
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false)
 
-  // Network Information states
+  
+
   const [networkInfo, setNetworkInfo] = useState<{
     hostIp: string
     port: number
@@ -168,7 +180,8 @@ export default function Dashboard() {
   const [copiedNetworkUrl, setCopiedNetworkUrl] = useState(false)
   const [latency, setLatency] = useState<number | null>(null)
 
-  // Helper to get the correct student access origin dynamically
+  
+
   const getStudentAccessOrigin = useCallback(() => {
     if (typeof window === 'undefined') return ''
     const hostname = window.location.hostname
@@ -183,9 +196,11 @@ export default function Dashboard() {
     return window.location.origin
   }, [networkInfo])
 
-  // Trigger audio alert and display a beautiful toast message on dashboard
+  
+
   const triggerAlert = useCallback((message: string, type: 'info' | 'success' | 'warning' | 'error', title?: string) => {
-    // 1. Play Audio chime
+    
+
     if (soundEnabled) {
       try {
         const frequency = type === 'error' ? 220 : type === 'warning' ? 440 : type === 'success' ? 660 : 520
@@ -208,7 +223,8 @@ export default function Dashboard() {
       }
     }
 
-    // 2. Add Toast message
+    
+
     const newToast: ToastNotification = {
       id: Math.random().toString(),
       title: title || (type === 'success' ? 'Success' : type === 'warning' ? 'Warning' : type === 'error' ? 'Error' : 'Notification'),
@@ -216,15 +232,18 @@ export default function Dashboard() {
       type,
       timestamp: new Date()
     }
-    setToasts((prev) => [newToast, ...prev.slice(0, 4)]) // Keep up to 5 toast logs
+    setToasts((prev) => [newToast, ...prev.slice(0, 4)]) 
 
-    // Dismiss toast after 6 seconds
+
+    
+
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== newToast.id))
     }, 6000)
   }, [soundEnabled])
 
-  // Load students, attendance, and locations for an active session
+  
+
   const loadSessionData = useCallback(async (sessionId: string) => {
     try {
       const res = await fetch(`/api/dashboard?sessionId=${sessionId}`)
@@ -273,13 +292,16 @@ export default function Dashboard() {
     }
   }, [])
 
-  // Notifications/Toasts list
+  
+
   const [searchQuery, setSearchQuery] = useState('')
 
-  // Time left state
+  
+
   const [timeLeft, setTimeLeft] = useState<string>('')
 
-  // Fetch network information and poll health status
+  
+
   useEffect(() => {
     async function fetchNetworkInfo() {
       try {
@@ -325,11 +347,13 @@ export default function Dashboard() {
     return () => clearInterval(interval)
   }, [activeSession])
 
-  // Refs for tracking changes to trigger audio/notifications
+  
+
   const prevInsideState = useRef<Record<string, boolean>>({})
   const prevOfflineState = useRef<Record<string, boolean>>({})
 
-  // Fetch initial profile & sessions
+  
+
   useEffect(() => {
     async function loadInitialData() {
       try {
@@ -346,7 +370,8 @@ export default function Dashboard() {
         }
 
         if (data.sessions) {
-          // Normalize the sessions to snake_case format for frontend compatibility
+          
+
           const normalizedSessions = data.sessions.map((s: any) => ({
             id: s.id,
             session_name: s.sessionName,
@@ -378,12 +403,14 @@ export default function Dashboard() {
     loadInitialData()
   }, [router, loadSessionData])
 
-  // Poll session data as a fallback when socket is disconnected
+  
+
   useEffect(() => {
     if (!activeSession) return
 
     const pollInterval = setInterval(() => {
-      // Check if socket is disconnected or not initialized
+      
+
       const isSocketActive = socketRef.current?.connected
       if (!isSocketActive) {
         console.log('[Dashboard Polling Fallback] Socket is disconnected or unavailable. Polling latest session data...')
@@ -396,7 +423,8 @@ export default function Dashboard() {
 
 
 
-  // 30-second offline check timer
+  
+
   useEffect(() => {
     if (!activeSession) return
 
@@ -409,14 +437,17 @@ export default function Dashboard() {
         Object.keys(updated).forEach((studentId) => {
           const loc = updated[studentId]
           const lastSeenTime = new Date(loc.last_seen).getTime()
-          const isOffline = now - lastSeenTime > 30000 // Requirement 10: 30 seconds boundary
+          const isOffline = now - lastSeenTime > 30000 
 
-          // Check if status changed to offline to push notification
+
+          
+
           if (isOffline && !prevOfflineState.current[studentId]) {
             prevOfflineState.current[studentId] = true
             const studentName = students[studentId]?.name || 'Student'
             
-            // Broadcast offline state change via WebSockets
+            
+
             if (socketRef.current) {
               socketRef.current.emit('status-change', {
                 roomId: activeSession.id,
@@ -437,7 +468,8 @@ export default function Dashboard() {
     return () => clearInterval(offlineCheckInterval)
   }, [activeSession, students, triggerAlert])
 
-  // Real-time synchronization using Socket.IO
+  
+
   useEffect(() => {
     if (!activeSession) return
 
@@ -446,7 +478,8 @@ export default function Dashboard() {
 
     socket.emit('join-room', activeSession.id)
 
-    // Latency Ping System
+    
+
     let pingInterval: NodeJS.Timeout
     socket.on('client-pong', (start: number) => {
       setLatency(Date.now() - start)
@@ -458,7 +491,8 @@ export default function Dashboard() {
       }, 5000)
     })
 
-    // 1. Listen to new students checking in
+    
+
     socket.on('student-joined', ({ student, attendance }: { student: any; attendance: any }) => {
       setStudents((prev) => ({
         ...prev,
@@ -487,7 +521,8 @@ export default function Dashboard() {
       triggerAlert(`${student.name} checked in.`, 'success', '✅ Student Joined')
     })
 
-    // 2. Listen to student connection status changes
+    
+
     socket.on('status-change', ({ studentId, status }: { studentId: string; status: string }) => {
       setAttendanceRecords((prev) => {
         const current = prev[studentId]
@@ -501,7 +536,8 @@ export default function Dashboard() {
         }
       })
 
-      // Update locations state status
+      
+
       setLocations((prev) => {
         const current = prev[studentId]
         if (!current) return prev
@@ -524,7 +560,8 @@ export default function Dashboard() {
       }
     })
 
-    // 3. Listen to real-time student location updates
+    
+
     socket.on('location-update', (loc: any) => {
       setLocations((prev) => ({
         ...prev,
@@ -537,10 +574,12 @@ export default function Dashboard() {
         }
       }))
 
-      // Reset offline status
+      
+
       prevOfflineState.current[loc.student_id] = false
 
-      // Check if boundary crossed
+      
+
       const prevInside = prevInsideState.current[loc.student_id]
       const curInside = loc.inside_radius
       const studentName = students[loc.student_id]?.name || 'Student'
@@ -564,7 +603,8 @@ export default function Dashboard() {
     }
   }, [activeSession, students, triggerAlert])
 
-  // Session Duration Countdown Timer
+  
+
   useEffect(() => {
     if (!activeSession) return
 
@@ -592,7 +632,8 @@ export default function Dashboard() {
 
 
 
-  // Generate QR Code URL whenever active session or networkInfo changes
+  
+
   useEffect(() => {
     if (activeSession) {
       const origin = getStudentAccessOrigin()
@@ -603,7 +644,8 @@ export default function Dashboard() {
     }
   }, [activeSession, networkInfo, getStudentAccessOrigin])
 
-  // Automatically detect teacher location to initialize classroom position
+  
+
   const detectLocation = () => {
     if (!('geolocation' in navigator)) {
       setFormError('Geolocation not supported by this browser.')
@@ -626,7 +668,8 @@ export default function Dashboard() {
     )
   }
 
-  // Create classroom session request
+  
+
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault()
     setFormError(null)
@@ -678,14 +721,16 @@ export default function Dashboard() {
         setSessionsList((prev) => [normalizedSession, ...prev])
         setNewRadiusInput(normalizedSession.radius.toString())
         
-        // Reset inputs
+        
+
         setSessionNameInput('')
         setClassroomNameInput('')
         setClassroomLat(null)
         setClassroomLng(null)
         setShowCoordsForm(false)
 
-        // Reset student tracking collections
+        
+
         setStudents({})
         setLocations({})
         setAttendanceRecords({})
@@ -701,7 +746,8 @@ export default function Dashboard() {
     }
   }
 
-  // Adjust active geofence radius
+  
+
   const handleUpdateRadius = async () => {
     if (!activeSession || !newRadiusInput) return
 
@@ -730,7 +776,8 @@ export default function Dashboard() {
 
         setActiveSession(normalizedSession)
         
-        // Emit live radius update over socket.io
+        
+
         if (socketRef.current) {
           socketRef.current.emit('radius-update', {
             roomId: normalizedSession.id,
@@ -748,7 +795,8 @@ export default function Dashboard() {
     }
   }
 
-  // End the attendance session
+  
+
   const handleEndSession = async () => {
     if (!activeSession) return
 
@@ -777,14 +825,16 @@ export default function Dashboard() {
     }
   }
 
-  // Sign out handler
+  
+
   const handleSignOut = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
     router.push('/')
     router.refresh()
   }
 
-  // Download QR Code PNG image
+  
+
   const downloadQrCode = () => {
     if (!qrCodeUrl) return
     const link = document.createElement('a')
@@ -796,7 +846,8 @@ export default function Dashboard() {
     triggerAlert('QR Code downloaded successfully.', 'success', '✅ Downloaded')
   }
 
-  // Regenerate QR Code
+  
+
   const handleRegenerateQr = async () => {
     if (!activeSession) return
     try {
@@ -811,7 +862,8 @@ export default function Dashboard() {
     }
   }
 
-  // Copy registration link to clipboard
+  
+
   const copySessionLink = () => {
     if (!activeSession) return
     const origin = getStudentAccessOrigin()
@@ -821,7 +873,8 @@ export default function Dashboard() {
     setTimeout(() => setCopiedLink(false), 2000)
   }
 
-  // Copy Network Info URL
+  
+
   const copyNetworkUrl = () => {
     const origin = getStudentAccessOrigin()
     if (!origin) return
@@ -831,7 +884,8 @@ export default function Dashboard() {
     triggerAlert('Student Access URL copied to clipboard.', 'success', '✅ Copied')
   }
 
-  // Export Attendance to CSV
+  
+
   const exportAttendanceCSV = () => {
     const list = aggregatedStudents
     if (list.length === 0) {
@@ -839,7 +893,8 @@ export default function Dashboard() {
       return
     }
 
-    // Columns: Name, Roll Number, IP Address, Join Time, Status, Last Seen
+    
+
     const headers = ['Name', 'Roll Number', 'IP Address', 'Join Time', 'Status', 'Last Seen']
     const rows = list.map((s) => [
       `"${s.name.replace(/"/g, '""')}"`,
@@ -862,7 +917,8 @@ export default function Dashboard() {
     triggerAlert('Attendance logs exported successfully.', 'success', '✅ Exported')
   }
 
-  // Calculate Average Session Duration
+  
+
   const getAverageSessionDuration = (): string => {
     const list = aggregatedStudents
     if (list.length === 0) return '0m'
@@ -884,8 +940,9 @@ export default function Dashboard() {
     return `${avgMinutes}m`
   }
 
-  // Consolidate raw tracking data into UI models
-  const getAggregatedStudents = (): StudentFullDetails[] => {
+  
+
+  const aggregatedStudents = useMemo(() => {
     const list: StudentFullDetails[] = []
     
     Object.keys(students).forEach((studentId) => {
@@ -934,28 +991,33 @@ export default function Dashboard() {
     })
 
     return list
-  }
+  }, [students, locations, attendanceRecords, activeSession])
 
-  // Filters students based on search query
-  const aggregatedStudents = getAggregatedStudents()
-  const filteredStudents = aggregatedStudents.filter(s =>
-    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.roll_number.includes(searchQuery) ||
-    s.department.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredStudents = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return aggregatedStudents
 
-  // Calculations for KPI summaries
+    return aggregatedStudents.filter((s) => {
+      const nameMatch = s.name.toLowerCase().includes(q)
+      const rollMatch = s.roll_number.toLowerCase().includes(q)
+      const statusMatch = s.status.toLowerCase() === q || s.status.toLowerCase().includes(q)
+      return nameMatch || rollMatch || statusMatch
+    })
+  }, [aggregatedStudents, searchQuery])
+
   const totalStudents = aggregatedStudents.length
   const presentCount = aggregatedStudents.filter((s) => s.status === 'inside').length
   const outsideCount = aggregatedStudents.filter((s) => s.status === 'outside').length
   const offlineCount = aggregatedStudents.filter((s) => s.status === 'offline').length
 
-  const selectedStudent = selectedStudentId ? aggregatedStudents.find(s => s.id === selectedStudentId) : null
+  const selectedStudent = useMemo(() => {
+    return selectedStudentId ? (aggregatedStudents.find(s => s.id === selectedStudentId) ?? null) : null
+  }, [selectedStudentId, aggregatedStudents])
 
   if (loading) {
     return (
       <div className="flex flex-col h-screen w-full bg-ct-bg text-ct-text font-sans overflow-hidden">
-        {/* Skeleton Header */}
+        {}
         <div className="flex items-center justify-between px-6 py-4 bg-ct-card border-b border-ct-border">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl skeleton-shimmer" />
@@ -970,7 +1032,7 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="flex flex-1 overflow-hidden">
-          {/* Skeleton Sidebar */}
+          {}
           <div className="hidden lg:flex w-80 border-r border-ct-border bg-ct-card flex-col">
             <div className="p-4 border-b border-ct-border space-y-3">
               <div className="w-32 h-4 rounded skeleton-shimmer" />
@@ -986,7 +1048,7 @@ export default function Dashboard() {
               ))}
             </div>
           </div>
-          {/* Skeleton Main */}
+          {}
           <div className="flex-1 p-6 space-y-6">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[1, 2, 3, 4].map(i => (
@@ -1005,10 +1067,10 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col h-screen w-full bg-ct-bg text-ct-text font-sans overflow-hidden transition-colors">
-      {/* Top Header Panel */}
+      {}
       <header className="flex items-center justify-between px-6 py-4 bg-ct-card border-b border-ct-border backdrop-blur-md z-10 transition-colors">
         <div className="flex items-center gap-3">
-          {/* Mobile Drawer Hamburger Toggle */}
+          {}
           <button
             onClick={() => setIsMobileDrawerOpen(!isMobileDrawerOpen)}
             className="lg:hidden p-2.5 bg-ct-card hover:bg-ct-card-solid text-ct-muted hover:text-ct-text rounded-xl border border-ct-border cursor-pointer flex items-center justify-center h-10 w-10 shadow-sm"
@@ -1028,7 +1090,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Dashboard Actions (Desktop Only) */}
+        {}
         {activeSession ? (
           <div className="hidden lg:flex items-center gap-3">
             <div className="flex items-center gap-4 bg-ct-input border border-ct-border px-4 py-2 rounded-xl text-sm mr-2">
@@ -1089,7 +1151,7 @@ export default function Dashboard() {
         )}
 
         <div className="flex items-center gap-3">
-          {/* Theme Toggle Button */}
+          {}
           <button
             onClick={toggleTheme}
             className="p-2.5 hover:bg-ct-card text-ct-muted hover:text-ct-text rounded-xl transition-colors cursor-pointer border border-transparent hover:border-ct-border"
@@ -1098,7 +1160,7 @@ export default function Dashboard() {
             {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
 
-          {/* Audio Chime Mute button */}
+          {}
           <button
             onClick={() => setSoundEnabled(!soundEnabled)}
             className="p-2.5 hover:bg-ct-card text-ct-muted hover:text-ct-text rounded-xl transition-colors cursor-pointer border border-transparent hover:border-ct-border"
@@ -1117,10 +1179,10 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Main Grid View */}
+      {}
       <div className="flex flex-1 overflow-hidden relative">
         
-        {/* Backdrop for Mobile student drawer */}
+        {}
         {isMobileDrawerOpen && (
           <div
             className="fixed inset-0 bg-black/60 z-20 lg:hidden backdrop-blur-sm transition-opacity duration-300"
@@ -1128,7 +1190,7 @@ export default function Dashboard() {
           />
         )}
 
-        {/* Left Panel: Student list monitor */}
+        {}
         <aside className={`fixed lg:relative top-0 bottom-0 left-0 z-30 w-80 border-r border-ct-border bg-ct-card flex flex-col flex-shrink-0 transition-transform duration-300 ease-in-out h-full lg:translate-x-0 ${
           isMobileDrawerOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}>
@@ -1143,7 +1205,7 @@ export default function Dashboard() {
               </span>
             </div>
             
-            {/* Search filter input */}
+            {}
             <div className="relative">
               <Search className="absolute left-3 inset-y-0 my-auto w-4 h-4 text-ct-muted" />
               <input
@@ -1156,7 +1218,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Student items scroll view */}
+          {}
           <div className="flex-1 overflow-y-auto divide-y divide-ct-border/40">
             {filteredStudents.length === 0 ? (
               <div className="p-8 text-center text-ct-muted text-xs leading-relaxed">
@@ -1178,7 +1240,15 @@ export default function Dashboard() {
                 return (
                   <button
                     key={stud.id}
-                    onClick={() => setSelectedStudentId(isSelected ? null : stud.id)}
+                    onClick={() => {
+                      if (isSelected) {
+                        setSelectedStudentId(null)
+                        setIsDrawerOpen(false)
+                      } else {
+                        setSelectedStudentId(stud.id)
+                        setIsDrawerOpen(true)
+                      }
+                    }}
                     className={`w-full text-left p-4 transition-colors text-xs space-y-1 relative border-l-2 hover:bg-ct-card/40 ${
                       isSelected 
                         ? 'bg-ct-card border-l-violet-500' 
@@ -1199,7 +1269,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Network Information Card */}
+          {}
           <div className="p-4 border-t border-ct-border bg-ct-card/20 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-ct-muted">
@@ -1299,12 +1369,12 @@ export default function Dashboard() {
           </div>
         </aside>
 
-        {/* Center Panel: Map and controls */}
+        {}
         <main className="flex-1 relative bg-ct-bg p-4 md:p-6 flex flex-col overflow-y-auto lg:overflow-hidden transition-colors">
           {activeSession ? (
             <div className="flex flex-col flex-1 gap-6 lg:overflow-hidden">
               
-              {/* Mobile Control Panel */}
+              {}
               <div className="flex flex-col gap-3 lg:hidden p-4 bg-ct-card border border-ct-border rounded-2xl">
                 <div className="flex items-center justify-between text-xs font-bold text-ct-muted uppercase tracking-wider">
                   <span className="flex items-center gap-1.5">
@@ -1354,7 +1424,7 @@ export default function Dashboard() {
                 </button>
               </div>
 
-              {/* Top Summary Widget */}
+              {}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 flex-shrink-0">
                 <div className="bg-ct-card border border-ct-border rounded-2xl p-4 flex items-center justify-between transition-all hover:shadow-md">
                   <div>
@@ -1386,7 +1456,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Map Panel (occupies 75% height) */}
+              {}
               <div className="h-80 lg:h-full lg:flex-1 relative min-h-[320px] lg:min-h-0">
                 <LiveMap
                   classroomLat={activeSession.latitude}
@@ -1398,7 +1468,8 @@ export default function Dashboard() {
               </div>
             </div>
           ) : (
-            // No Session State: Create Classroom Session UI
+            
+
             <div className="flex flex-col flex-1 items-center justify-center p-6 max-w-xl mx-auto overflow-y-auto w-full">
               <div className="w-full text-center space-y-2 mb-6">
                 <div className="w-12 h-12 bg-violet-500/10 border border-violet-500/20 rounded-2xl flex items-center justify-center mx-auto text-violet-500">
@@ -1408,7 +1479,7 @@ export default function Dashboard() {
                 <p className="text-ct-muted text-xs">Set up your geo-fence and start logging student locations</p>
               </div>
 
-              {/* Create session card */}
+              {}
               <div className="w-full bg-ct-card border border-ct-border rounded-2xl p-6 sm:p-8 shadow-2xl">
                 <form onSubmit={handleCreateSession} className="space-y-5">
                   {formError && (
@@ -1444,7 +1515,7 @@ export default function Dashboard() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-ct-border/60 pt-4">
-                    {/* Radius Slider + Numeric Input */}
+                    {}
                     <div className="space-y-2">
                       <div className="flex justify-between items-center">
                         <label className="block text-[10px] font-bold uppercase tracking-wider text-ct-muted">Geofence Radius (meters)</label>
@@ -1480,7 +1551,7 @@ export default function Dashboard() {
                       </p>
                     </div>
 
-                    {/* Duration Input + Presets */}
+                    {}
                     <div className="space-y-2">
                       <div className="flex justify-between items-center">
                         <label className="block text-[10px] font-bold uppercase tracking-wider text-ct-muted">Duration (minutes)</label>
@@ -1535,7 +1606,7 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Classroom Coordinate capture */}
+                  {}
                   <div className="border-t border-ct-border/60 pt-4 space-y-4">
                     <label className="block text-xs font-semibold uppercase tracking-wider text-ct-muted">Classroom Coordinates</label>
                     <div className="flex gap-3">
@@ -1559,7 +1630,8 @@ export default function Dashboard() {
                         type="button"
                         onClick={() => {
                           setShowCoordsForm(true)
-                          // Initialize default placeholder coords (e.g. San Francisco or similar) if empty
+                          
+
                           if (classroomLat === null) {
                             setClassroomLat(37.774929)
                             setClassroomLng(-122.419418)
@@ -1597,7 +1669,7 @@ export default function Dashboard() {
                           </div>
                         </div>
 
-                        {/* Interactive mini picking map */}
+                        {}
                         <div className="h-44 w-full relative">
                           <LiveMap
                             classroomLat={classroomLat}
@@ -1626,99 +1698,17 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Detailed Student view overlay drawer (when student is clicked in sidebar) */}
-          {selectedStudent && (
-            <div className="absolute top-0 right-0 h-full w-80 bg-ct-card-solid/95 backdrop-blur-xl border-l border-ct-border shadow-2xl flex flex-col z-[1000] p-6 animate-in slide-in-from-right duration-300">
-              <div className="flex items-center justify-between border-b border-ct-border pb-4">
-                <h3 className="font-bold text-ct-text text-sm">Student Details</h3>
-                <button
-                  onClick={() => setSelectedStudentId(null)}
-                  className="p-1 hover:bg-ct-border text-ct-muted hover:text-ct-text rounded-lg transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+          {}
+          <StudentIntelligenceDrawer
+            isOpen={isDrawerOpen}
+            onClose={() => {
+              setIsDrawerOpen(false)
+              setSelectedStudentId(null)
+            }}
+            student={selectedStudent}
+          />
 
-              <div className="flex-1 overflow-y-auto py-6 space-y-5 text-xs">
-                <div className="flex flex-col items-center text-center pb-4 border-b border-ct-border/50">
-                  <div className={`w-12 h-12 rounded-full border-2 flex items-center justify-center font-bold text-lg mb-3 ${
-                    selectedStudent.status === 'inside'
-                      ? 'border-emerald-500 text-emerald-400 bg-emerald-950/10'
-                      : selectedStudent.status === 'outside'
-                      ? 'border-rose-500 text-rose-400 bg-rose-950/10'
-                      : 'border-amber-500 text-amber-400 bg-amber-950/10'
-                  }`}>
-                    {selectedStudent.name.charAt(0).toUpperCase()}
-                  </div>
-                  <h4 className="font-bold text-ct-text text-base">{selectedStudent.name}</h4>
-                  <span className="text-[10px] text-ct-muted uppercase tracking-wider mt-1">{selectedStudent.department}</span>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <span className="text-ct-muted block">Roll / Student Number</span>
-                    <span className="text-ct-text font-semibold mt-0.5 block">{selectedStudent.roll_number}</span>
-                  </div>
-                  <div>
-                    <span className="text-ct-muted block">IP Address</span>
-                    <span className="text-ct-text font-mono mt-0.5 block">{selectedStudent.ip_address || 'N/A'}</span>
-                  </div>
-                  <div>
-                    <span className="text-ct-muted block">Status</span>
-                    <span className={`font-semibold mt-0.5 block capitalize ${
-                      selectedStudent.status === 'inside'
-                        ? 'text-emerald-400'
-                        : selectedStudent.status === 'outside'
-                        ? 'text-rose-400'
-                        : 'text-amber-400'
-                    }`}>
-                      {selectedStudent.status === 'inside' ? '🟢 Inside Radius' : selectedStudent.status === 'outside' ? '🔴 Outside Radius' : '🟡 Offline'}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-ct-muted block">Distance From Classroom</span>
-                    <span className="text-ct-text mt-0.5 block font-semibold">
-                      {selectedStudent.distance !== undefined ? `${selectedStudent.distance} meters` : 'N/A'}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-ct-muted block">Last Seen Timestamp</span>
-                    <span className="text-ct-text mt-0.5 block">
-                      {selectedStudent.last_seen 
-                        ? new Date(selectedStudent.last_seen).toLocaleString() 
-                        : 'Never'}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <span className="text-ct-muted block">Latitude</span>
-                      <span className="text-ct-text font-mono mt-0.5 block">{selectedStudent.latitude?.toFixed(6) ?? 'N/A'}</span>
-                    </div>
-                    <div>
-                      <span className="text-ct-muted block">Longitude</span>
-                      <span className="text-ct-text font-mono mt-0.5 block">{selectedStudent.longitude?.toFixed(6) ?? 'N/A'}</span>
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-ct-muted block">Browser</span>
-                    <span className="text-ct-text mt-0.5 block">{selectedStudent.browser_info || 'Unknown'}</span>
-                  </div>
-                  <div>
-                    <span className="text-ct-muted block">Device</span>
-                    <span className="text-ct-text mt-0.5 block">{selectedStudent.device_type || 'Unknown'}</span>
-                  </div>
-                  <div>
-                    <span className="text-ct-muted block mb-1">User Agent String</span>
-                    <div className="bg-ct-bg/60 p-2.5 rounded-lg border border-ct-border text-[9px] text-ct-muted break-all leading-normal max-h-24 overflow-y-auto">
-                      {selectedStudent.user_agent || 'Unknown'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Toast Notification HUD display list (Bottom Right) */}
+          {}
           <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 flex flex-col gap-2.5 z-[1000] max-w-[calc(100vw-2rem)] sm:max-w-sm">
             {toasts.map((toast) => {
               const toastTheme =
@@ -1762,7 +1752,7 @@ export default function Dashboard() {
         </main>
       </div>
 
-      {/* QR Code generator Modal */}
+      {}
       {showQrModal && activeSession && (
         <div className="fixed inset-0 z-[1500] flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="w-full max-w-sm bg-ct-card-solid border border-ct-border rounded-2xl p-6 shadow-2xl space-y-6">
@@ -1777,7 +1767,7 @@ export default function Dashboard() {
             </div>
 
             <div className="flex flex-col items-center space-y-4">
-              {/* QR Image */}
+              {}
               {qrCodeUrl ? (
                 <div className="bg-white p-4 rounded-xl border-4 border-white shadow-inner">
                   <img src={qrCodeUrl} alt="Session QR" className="w-56 h-56" />
@@ -1792,7 +1782,7 @@ export default function Dashboard() {
                 Students scan this QR code or navigate to the link below to verify geofenced attendance.
               </p>
 
-              {/* Download and Regenerate buttons */}
+              {}
               <div className="flex gap-3 w-full">
                 <button
                   onClick={downloadQrCode}
@@ -1808,7 +1798,7 @@ export default function Dashboard() {
                 </button>
               </div>
 
-              {/* Copy URL bar */}
+              {}
               <div className="w-full flex gap-2 bg-ct-input p-2.5 rounded-xl border border-ct-border">
                 <input
                   type="text"
@@ -1828,7 +1818,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Modify Geofence Radius Modal */}
+      {}
       {showRadiusModal && activeSession && (
         <div className="fixed inset-0 z-[1500] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
           <div className="w-full max-w-xs bg-ct-card-solid border border-ct-border rounded-2xl p-6 shadow-2xl space-y-4">
@@ -1902,7 +1892,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Session Analytics Modal */}
+      {}
       {showAnalyticsModal && activeSession && (
         <div className="fixed inset-0 z-[1500] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
           <div className="w-full max-w-sm bg-ct-card-solid border border-ct-border rounded-2xl p-6 shadow-2xl space-y-6">

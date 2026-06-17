@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import ThreeDBackground from '@/components/ThreeDBackground'
 import {
   Lock,
   Mail,
@@ -29,7 +30,8 @@ import {
 
 export default function Home() {
 
-  // Theme support state
+  
+
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
 
   useEffect(() => {
@@ -50,10 +52,12 @@ export default function Home() {
     document.documentElement.classList.toggle('dark', nextTheme === 'dark')
   }
 
-  // Mobile navigation menu state
+  
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
-  // Live Simulator States
+  
+
   const [mockRadius, setMockRadius] = useState(60)
   const [mockStudents, setMockStudents] = useState([
     { name: 'Alice Smith', r: 35, angle: 45, dept: 'CS' },
@@ -67,7 +71,8 @@ export default function Home() {
     'Alice Smith logged check-in: 🟢 Inside'
   ])
 
-  // Random check-in event simulation
+  
+
   const simulateCheckIn = () => {
     const names = ['Sophia Davis', 'Liam Martinez', 'Olivia Garcia', 'Noah Rodriguez', 'Ava Hernandez']
     const depts = ['CS', 'EE', 'ME', 'IT', 'BIO']
@@ -76,11 +81,13 @@ export default function Home() {
     const randomRadius = Math.floor(Math.random() * 140) + 10
     const randomAngle = Math.floor(Math.random() * 360)
     
-    // Add new student
+    
+
     const newStudent = { name: randomName, r: randomRadius, angle: randomAngle, dept: randomDept }
     setMockStudents((prev) => [newStudent, ...prev.slice(0, 4)])
     
-    // Append log
+    
+
     const statusText = randomRadius <= mockRadius ? '🟢 Inside' : '🔴 Outside'
     setFeedLog((prev) => [
       `${randomName} checked in: ${statusText} (Dist: ${randomRadius}m)`,
@@ -88,14 +95,17 @@ export default function Home() {
     ])
   }
 
-  // Dynamic status count
+  
+
   const presentCount = mockStudents.filter((s) => s.r <= mockRadius).length
   const outsideCount = mockStudents.filter((s) => s.r > mockRadius).length
 
-  // FAQ Active State Accordion
+  
+
   const [activeFaq, setActiveFaq] = useState<number | null>(null)
 
-  // Auth modal states
+  
+
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
   const [isLogin, setIsLogin] = useState(true)
   const [email, setEmail] = useState('')
@@ -106,7 +116,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [isRedirecting, setIsRedirecting] = useState(false)
 
-  // Check if already authenticated on load
+  
+
   useEffect(() => {
     async function checkAuth() {
       try {
@@ -160,12 +171,12 @@ export default function Home() {
   }
 
   return (
-    <div className="relative min-h-screen w-full bg-ct-bg text-ct-text font-sans overflow-x-hidden transition-colors duration-300 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:20px_20px]">
-      {/* Background Graphic Glows */}
+    <div className="relative min-h-screen w-full bg-transparent text-ct-text font-sans overflow-x-hidden transition-colors duration-300 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:20px_20px]">
+      <ThreeDBackground />
       <div className="absolute top-[-10%] left-[-10%] w-[600px] h-[600px] rounded-full bg-ct-glow-violet blur-[150px] pointer-events-none" />
       <div className="absolute bottom-[20%] right-[-10%] w-[600px] h-[600px] rounded-full bg-ct-glow-emerald blur-[150px] pointer-events-none" />
 
-      {/* Header / Nav Bar */}
+      {}
       <header className="sticky top-0 z-40 w-full bg-ct-bg/75 backdrop-blur-md border-b border-ct-border py-4 px-6 md:px-12 flex justify-between items-center transition-all duration-300 shadow-sm">
         <div className="flex items-center gap-2.5">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 shadow-md border border-violet-500/20">
@@ -184,7 +195,7 @@ export default function Home() {
         </nav>
 
         <div className="flex items-center gap-2">
-          {/* Theme Toggle Button */}
+          {}
           <button
             onClick={toggleTheme}
             className="p-2.5 rounded-xl hover:bg-ct-card border border-transparent hover:border-ct-border text-ct-muted hover:text-ct-text transition-all cursor-pointer shadow-sm"
@@ -206,7 +217,7 @@ export default function Home() {
             Get Started
           </button>
 
-          {/* Hamburger Menu Icon */}
+          {}
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             className="md:hidden p-2.5 rounded-xl text-ct-muted hover:text-ct-text hover:bg-ct-card cursor-pointer border border-transparent hover:border-ct-border"
@@ -216,7 +227,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Mobile Menu Drawer */}
+      {}
       {isMobileMenuOpen && (
         <div className="md:hidden sticky top-[73px] z-30 w-full border-b border-ct-border bg-ct-card-solid backdrop-blur-lg px-6 py-5 space-y-4 animate-in slide-in-from-top duration-200">
           <nav className="flex flex-col gap-4 text-xs font-bold uppercase tracking-wider text-ct-muted">
@@ -242,7 +253,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Hero Centered Section */}
+      {}
       <section className="relative px-6 md:px-12 pt-20 pb-16 max-w-4xl mx-auto text-center">
         <div className="space-y-6 flex flex-col items-center animate-in fade-in slide-in-from-bottom duration-500">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-600 dark:text-violet-400 text-[10px] font-bold uppercase tracking-wider">
@@ -275,7 +286,7 @@ export default function Home() {
             </a>
           </div>
 
-          {/* Quick Proof Metrics */}
+          {}
           <div className="pt-12 grid grid-cols-3 gap-8 border-t border-ct-border max-w-xl mx-auto w-full">
             <div className="space-y-1">
               <span className="text-2xl sm:text-3xl font-black text-ct-text">99.9%</span>
@@ -293,7 +304,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Simulator Section (Centered, Wide, Spaced) */}
+      {}
       <section id="simulator" className="relative px-6 md:px-12 py-16 max-w-5xl mx-auto text-center border-t border-ct-border">
         <div className="space-y-4 mb-8 text-center">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-600 dark:text-violet-400 text-[10px] font-bold uppercase tracking-wider">
@@ -310,7 +321,7 @@ export default function Home() {
 
         <div className="bg-ct-card backdrop-blur-xl border border-ct-border rounded-2xl shadow-2xl p-5 sm:p-8 space-y-6 text-left max-w-3xl mx-auto relative overflow-hidden">
           
-          {/* Header */}
+          {}
           <div className="flex items-center justify-between pb-3 border-b border-ct-border">
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -324,7 +335,7 @@ export default function Home() {
             </button>
           </div>
 
-          {/* Map SVG Visualizer */}
+          {}
           <div className="relative">
             <svg className="w-full h-64 bg-ct-bg/50 border border-ct-border rounded-xl shadow-inner" viewBox="0 0 200 200">
               <defs>
@@ -334,11 +345,11 @@ export default function Home() {
               </defs>
               <rect width="100%" height="100%" fill="url(#mock-grid)" />
               
-              {/* Classroom Center Point */}
+              {}
               <circle cx="100" cy="100" r="5" fill="#8b5cf6" className="animate-pulse" />
               <circle cx="100" cy="100" r="2" fill="#ffffff" />
               
-              {/* Dynamic Geofence Circle */}
+              {}
               <circle 
                 cx="100" 
                 cy="100" 
@@ -350,7 +361,7 @@ export default function Home() {
                 className="transition-all duration-300"
               />
               
-              {/* Student markers */}
+              {}
               {mockStudents.map((s, idx) => {
                 const isInside = s.r <= mockRadius
                 const rad = (s.angle * Math.PI) / 180
@@ -370,7 +381,7 @@ export default function Home() {
               })}
             </svg>
             
-            {/* Live Stats Badges */}
+            {}
             <div className="absolute bottom-3 left-3 flex gap-2 text-[10px] font-bold">
               <span className="px-2.5 py-1 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                 🟢 Inside: {presentCount}
@@ -381,7 +392,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Slider Controller */}
+          {}
           <div className="space-y-1">
             <div className="flex justify-between text-[10px] font-extrabold uppercase tracking-wider text-ct-muted">
               <span>Simulated Geofence Radius</span>
@@ -397,7 +408,7 @@ export default function Home() {
             />
           </div>
 
-          {/* Live activity log */}
+          {}
           <div className="space-y-1.5 border-t border-ct-border pt-4">
             <span className="text-[9px] font-extrabold uppercase tracking-wider text-ct-muted block">Live Simulator Feed</span>
             <div className="space-y-1 font-mono text-[9px] text-ct-muted">
@@ -413,7 +424,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Core Capabilities */}
+      {}
       <section id="features" className="px-6 md:px-12 py-20 border-t border-ct-border max-w-6xl mx-auto space-y-12">
         <div className="text-center space-y-3">
           <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-violet-500/10 text-violet-500 mb-1">
@@ -502,7 +513,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Classroom Workflow Section */}
+      {}
       <section id="workflow" className="px-6 md:px-12 py-20 border-t border-ct-border bg-ct-card-solid/10 max-w-7xl mx-auto">
         <div className="text-center space-y-3 max-w-xl mx-auto mb-16">
           <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-violet-500/10 text-violet-500 mb-1">
@@ -559,7 +570,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Frequently Asked Questions */}
+      {}
       <section id="faq" className="px-6 md:px-12 py-20 border-t border-ct-border max-w-4xl mx-auto space-y-12">
         <div className="text-center space-y-3">
           <div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-violet-500/10 text-violet-500 mb-1">

@@ -25,7 +25,8 @@ interface LiveMapProps {
   theme?: 'dark' | 'light'
 }
 
-// Custom DivIcons utilizing Tailwind classes for premium aesthetic
+
+
 const createClassroomIcon = () => {
   return L.divIcon({
     html: `<div class="relative w-8 h-8 flex items-center justify-center bg-violet-650 rounded-full border border-violet-400 shadow-lg shadow-violet-500/40">
@@ -61,7 +62,8 @@ const createStudentIcon = (status: 'inside' | 'outside' | 'offline') => {
   })
 }
 
-// Subcomponent to trigger flyTo animation when classroom coordinates change
+
+
 function RecenterMap({ lat, lng }: { lat: number; lng: number }) {
   const map = useMap()
   useEffect(() => {
@@ -70,7 +72,8 @@ function RecenterMap({ lat, lng }: { lat: number; lng: number }) {
   return null
 }
 
-// Subcomponent to handle map clicks for selecting classroom coordinates
+
+
 function MapEventsHandler({
   isSelecting,
   onSelected
@@ -100,7 +103,8 @@ export default function LiveMap({
   const [isClient, setIsClient] = useState(false)
   const [mapTheme, setMapTheme] = useState<'dark' | 'light'>('dark')
 
-  // Ensure Leaflet is only initiated on the browser client
+  
+
   useEffect(() => {
     setIsClient(true)
   }, [])
@@ -159,7 +163,8 @@ export default function LiveMap({
           center={classroomPosition}
           radius={radius}
           pathOptions={{
-            color: '#7c3aed', // violet-600
+            color: '#7c3aed', 
+
             fillColor: '#7c3aed',
             fillOpacity: 0.1,
             weight: 1.5,

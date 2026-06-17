@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, use, Suspense, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import ThreeDBackground from '@/components/ThreeDBackground'
 import { Compass, ShieldAlert, ShieldCheck, MapPin, Radio, Bell, AlertTriangle, Sun, Moon } from 'lucide-react'
 import { io } from 'socket.io-client'
 import { KalmanFilter, getDistanceInMeters } from '@/lib/geoutils'
@@ -13,11 +14,14 @@ interface Student {
   department: string
 }
 
-// Geolocation standard configurations to maximize accuracy and speed up on mobile devices
+
+
 const geoOptions = {
   enableHighAccuracy: true,
-  timeout: 10000, // 10 seconds timeout for high-accuracy mode
-  maximumAge: 0 // Do not use cached locations, force real-time readings
+  timeout: 10000, 
+
+  maximumAge: 0 
+
 }
 
 function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }> }) {
@@ -29,10 +33,12 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Onboarding support
+  
+
   const [hasOnboarded, setHasOnboarded] = useState<boolean>(false)
 
-  // Theme support
+  
+
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
 
   useEffect(() => {
@@ -62,7 +68,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     }
   }
 
-  // Tracking states
+  
+
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [trackingStatus, setTrackingStatus] = useState<'prompting' | 'tracking' | 'error'>('prompting')
   const [insideRadius, setInsideRadius] = useState<boolean | null>(null)
@@ -72,13 +79,15 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
   const [socketConnected, setSocketConnected] = useState(false)
   const [latency, setLatency] = useState<number | null>(null)
 
-  // Location history ref for smoothing
+  
+
   const locationHistoryRef = useRef<{ lat: number; lng: number }[]>([])
   const [accuracyIgnored, setAccuracyIgnored] = useState<boolean>(false)
   const [lastIgnoredAccuracy, setLastIgnoredAccuracy] = useState<number | null>(null)
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null)
 
-  // Diagnostics states
+  
+
   const [isInsecureContext, setIsInsecureContext] = useState(false)
   const [permissionState, setPermissionState] = useState<string>('checking')
   const [gpsError, setGpsError] = useState<{ code: number; message: string; codeString: string } | null>(null)
@@ -86,7 +95,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
   const [deviceDetails, setDeviceDetails] = useState<string>('Detecting...')
   const [currentUrl, setCurrentUrl] = useState<string>('Detecting...')
 
-  // Advanced tracking and geofencing states
+  
+
   const kalmanLatRef = useRef<KalmanFilter | null>(null)
   const kalmanLngRef = useRef<KalmanFilter | null>(null)
   const lastSyncTimeRef = useRef<number>(0)
@@ -94,7 +104,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
   const consecutiveStatesRef = useRef<{ status: 'Inside' | 'Warning' | 'Outside' | null, count: number }>({ status: null, count: 0 })
   const [currentValidatedStatus, setCurrentValidatedStatus] = useState<'Inside' | 'Warning' | 'Outside' | null>(null)
 
-  // Developer Mode
+  
+
   const [devModeClicks, setDevModeClicks] = useState(0)
   const [isDevMode, setIsDevMode] = useState(false)
 
@@ -110,11 +121,13 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     })
   }
 
-  // Triggers and refs for clean watch recovery
+  
+
   const [watchTrigger, setWatchTrigger] = useState(0)
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Cleanup timeout on unmount
+  
+
   useEffect(() => {
     return () => {
       if (retryTimeoutRef.current) {
@@ -131,9 +144,10 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     setTrackingStatus('prompting')
     setPermissionState('checking')
     setWatchTrigger((prev) => prev + 1)
-  }, [])
+  }, [setWatchTrigger])
 
-  // Create refs to prevent hook dependencies from triggering watchPosition teardown/recreation loops
+  
+
   const studentRef = useRef(student)
   const sessionIdRef = useRef(sessionId)
   const trackingStatusRef = useRef(trackingStatus)
@@ -144,7 +158,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
   useEffect(() => { trackingStatusRef.current = trackingStatus }, [trackingStatus])
   useEffect(() => { permissionStateRef.current = permissionState }, [permissionState])
 
-  // Unified logging/instrumentation helper
+  
+
   const logGeolocationStatus = useCallback(async (action: string, details: string) => {
     let perm = 'unknown'
     if (typeof window !== 'undefined' && navigator.permissions && navigator.permissions.query) {
@@ -158,14 +173,16 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     console.log(`[Geolocation Instrumentation] Action: ${action} | Permission State: ${perm} | Secure Context: ${typeof window !== 'undefined' ? window.isSecureContext : 'N/A'} | Origin URL: ${typeof window !== 'undefined' ? window.location.href : 'N/A'} | Details: ${details}`)
   }, [])
 
-  // Detect device context, permission status, and URL on mount
+  
+
   useEffect(() => {
     if (typeof window === 'undefined') return
 
     setIsInsecureContext(!window.isSecureContext)
     setCurrentUrl(window.location.href)
 
-    // Parse friendly browser and device information
+    
+
     const ua = navigator.userAgent
     let browser = 'Unknown Browser'
     let device = 'Desktop'
@@ -212,7 +229,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     updatePermission()
   }, [])
 
-  // Listen for window focus to automatically recheck permissions and retry tracking
+  
+
   useEffect(() => {
     if (typeof window === 'undefined') return
 
@@ -238,11 +256,13 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     return () => window.removeEventListener('focus', handleFocus)
   }, [handleRetry])
 
-  // Notification states
+  
+
   const [notificationPermission, setNotificationPermission] = useState<string>('default')
   const [inAppNotification, setInAppNotification] = useState<{ message: string; type: 'success' | 'warning' } | null>(null)
   
-  // Watcher/Alert refs
+  
+
   const alertIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const socketRef = useRef<any>(null)
   const prevInsideRef = useRef<boolean | null>(null)
@@ -254,17 +274,20 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     }, 6000)
   }
 
-  // Callback to process successful geolocation updates
+  
+
   const handleSuccess = useCallback(async (position: GeolocationPosition) => {
     const { latitude, longitude, accuracy } = position.coords
     const currentStudent = studentRef.current
     const currentSessionId = sessionIdRef.current
 
-    // Print exact requested GPS SUCCESS format
+    
+
     console.log(`GPS SUCCESS\nlat: ${latitude}\nlng: ${longitude}`)
     logGeolocationStatus('SUCCESS_CALLBACK', `Lat: ${latitude}, Lng: ${longitude}, Acc: ${accuracy}m`)
 
-    // Filter out low accuracy cell-tower or WiFi fallback updates (> 50m accuracy)
+    
+
     if (accuracy > 50) {
       console.warn(`[GPS Jitter Filtered] Discarding reading with poor accuracy: ${accuracy}m (> 50m)`)
       setLastIgnoredAccuracy(accuracy)
@@ -275,26 +298,33 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     setGpsAccuracy(accuracy)
 
     setTrackingStatus('tracking')
-    setGpsError(null) // Reset errors on successful location acquisition
-    setError(null) // Clear any previous error states
-    setPermissionState('granted') // Geolocation succeeded, so permission must be granted
+    setGpsError(null) 
 
-    // Initialize Kalman filters if not present
+    setError(null) 
+
+    setPermissionState('granted') 
+
+
+    
+
     if (!kalmanLatRef.current) kalmanLatRef.current = new KalmanFilter(0.01, 0.001)
     if (!kalmanLngRef.current) kalmanLngRef.current = new KalmanFilter(0.01, 0.001)
 
-    // Apply Kalman filter
+    
+
     const kLat = kalmanLatRef.current.filter(latitude)
     const kLng = kalmanLngRef.current.filter(longitude)
 
-    // Add kalman-filtered position to sliding history
+    
+
     const history = [...locationHistoryRef.current, { lat: kLat, lng: kLng }]
     if (history.length > 5) {
       history.shift()
     }
     locationHistoryRef.current = history
 
-    // Calculate moving average
+    
+
     const avgLat = history.reduce((sum, c) => sum + c.lat, 0) / history.length
     const avgLng = history.reduce((sum, c) => sum + c.lng, 0) / history.length
 
@@ -310,7 +340,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     const now = Date.now()
     const timeSinceSync = now - lastSyncTimeRef.current
     
-    // Adaptive Throttling Heartbeat
+    
+
     let shouldSync = false
     let distMoved = 0
     if (!lastSyncLocRef.current) {
@@ -323,16 +354,19 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
         avgLng
       )
       if (distMoved < 2) {
-        // Stationary: sync every 10s
+        
+
         if (timeSinceSync >= 10000) shouldSync = true
       } else {
-        // Moving: sync every 4s
+        
+
         if (timeSinceSync >= 4000) shouldSync = true
       }
     }
 
     if (!shouldSync) {
-      // Return early, map already updated via setCoords
+      
+
       return
     }
 
@@ -359,7 +393,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
         const dist = data.distance
         const rad = data.radius
 
-        // Calculate 3-tick validation
+        
+
         let computedState: 'Inside' | 'Warning' | 'Outside' = 'Inside'
         if (dist <= rad) computedState = 'Inside'
         else if (dist <= rad + 10) computedState = 'Warning'
@@ -379,7 +414,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
             setCurrentValidatedStatus(computedState)
             validatedStatusToEmit = computedState
             
-            // Re-sync immediately to backend with the new validated state
+            
+
             fetch('/api/location', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -399,7 +435,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
         setRadius(rad)
         setLastUpdated(new Date())
 
-        // Emit location update over Socket.io
+        
+
         if (socketRef.current) {
           socketRef.current.emit('location-update', {
             roomId: currentSessionId,
@@ -420,16 +457,18 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     } catch (err) {
       console.error('[Geolocation Success Callback] Failed to post location update to backend:', err)
     }
-  }, [logGeolocationStatus])
+  }, [logGeolocationStatus, currentValidatedStatus])
 
-  // Callback to handle geolocation tracking failures with automatic retry loops
+  
+
   const handleError = useCallback((error: GeolocationPositionError) => {
     const codeString = 
       error.code === error.PERMISSION_DENIED ? 'PERMISSION_DENIED' :
       error.code === error.POSITION_UNAVAILABLE ? 'POSITION_UNAVAILABLE' :
       error.code === error.TIMEOUT ? 'TIMEOUT' : 'UNKNOWN_ERROR';
 
-    // Print exact requested GPS ERROR format
+    
+
     console.error(`GPS ERROR\ncode: ${error.code}\nmessage: ${error.message}`)
     logGeolocationStatus('ERROR_CALLBACK', `Code: ${error.code} (${codeString}), Message: ${error.message}`)
     setGpsError({ code: error.code, message: error.message, codeString })
@@ -450,7 +489,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     if (error.code === error.PERMISSION_DENIED) {
       setError(userFriendlyMessage)
     } else {
-      // Handle POSITION_UNAVAILABLE or TIMEOUT: Increment retry counter and schedule retry
+      
+
       setRetryCount((prev) => {
         const nextRetry = prev + 1
         if (nextRetry >= 5) {
@@ -473,7 +513,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
         clearTimeout(retryTimeoutRef.current)
       }
 
-      // Auto-retry after 3 seconds by restarting watchPosition
+      
+
       retryTimeoutRef.current = setTimeout(() => {
         if (trackingStatusRef.current !== 'error') {
           logGeolocationStatus('AUTO_RETRY_WATCH_RESTART', 'Restarting watchPosition for retry...')
@@ -481,14 +522,17 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
         }
       }, 3000)
     }
-  }, [logGeolocationStatus])
+  }, [logGeolocationStatus, setWatchTrigger])
 
-  // 1. Socket.IO connection and reconnect handling
+  
+
   useEffect(() => {
     if (!student || !sessionId) return
-    if (!hasOnboarded) return // Gate socket connection and triggers until onboarded
+    if (!hasOnboarded) return 
 
-    // Socket.io initialization with auto-reconnection parameters
+
+    
+
     socketRef.current = io({
       reconnection: true,
       reconnectionAttempts: Infinity,
@@ -522,7 +566,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
       console.log('[Socket] Disconnected from server')
     })
 
-    // Latency Ping System
+    
+
     let pingInterval: NodeJS.Timeout
     socket.on('client-pong', (start: number) => {
       setLatency(Date.now() - start)
@@ -533,7 +578,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
       console.log('[Socket] Connected, joining room:', sessionId)
       socket.emit('join-room', sessionId)
 
-      // Only re-emit student joined if we have the student object
+      
+
       if (studentRef.current) {
         socket.emit('student-joined', {
           roomId: sessionId,
@@ -551,19 +597,23 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
         })
       }
       
-      // Force an immediate location sync when reconnecting to restore state
+      
+
       triggerLocationCheck()
 
-      // Start pinging
+      
+
       pingInterval = setInterval(() => {
         socket.emit('client-ping', Date.now())
       }, 5000)
     })
 
-    // Listen for live radius adjustments from teacher
+    
+
     socket.on('radius-update', ({ radius }: { radius: number }) => {
       setRadius(radius)
-      // Force trigger location update immediately on radius change
+      
+
       triggerLocationCheck()
     })
 
@@ -575,15 +625,17 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
       if (pingInterval) clearInterval(pingInterval)
       socket.disconnect()
     }
-  }, [sessionId, handleSuccess, handleError, logGeolocationStatus, hasOnboarded])
+  }, [sessionId, handleSuccess, handleError, logGeolocationStatus, hasOnboarded, student, currentValidatedStatus])
 
-  // 2. Fetch student info from search param or localStorage
+  
+
   useEffect(() => {
     const studentIdParam = searchParams.get('studentId')
     let foundStudent: Student | null = null
 
     if (studentIdParam) {
-      // Try local storage first
+      
+
       const stored = localStorage.getItem(`classtrack_student_${sessionId}`)
       if (stored) {
         const parsed = JSON.parse(stored)
@@ -597,9 +649,11 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     }
 
     if (foundStudent && foundStudent.id === studentIdParam) {
-      // Validated
+      
+
     } else if (foundStudent) {
-      // Validated from localstorage fallback
+      
+
     } else if (studentIdParam) {
       foundStudent = {
         id: studentIdParam,
@@ -617,13 +671,15 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
       setLoading(false)
     }
 
-    // Check notification permission
+    
+
     if ('Notification' in window) {
       setNotificationPermission(Notification.permission)
     }
   }, [sessionId, searchParams])
 
-  // Request browser notification permissions
+  
+
   const requestNotificationPermission = async () => {
     if ('Notification' in window) {
       const permission = await Notification.requestPermission()
@@ -631,10 +687,12 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     }
   }
 
-  // 3. Start geolocation tracking using watchPosition
+  
+
   useEffect(() => {
     if (!student || !sessionId) return
-    if (!hasOnboarded) return // Gate GPS prompt until onboarded
+    if (!hasOnboarded) return 
+
 
     if (!('geolocation' in navigator)) {
       setTrackingStatus('error')
@@ -671,11 +729,13 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
   }, [student, sessionId, handleSuccess, handleError, logGeolocationStatus, watchTrigger, hasOnboarded])
 
 
-  // 4. Coordinate tab alerts, browser push, and in-app notifications on geofence transitions
+  
+
   useEffect(() => {
     if (insideRadius === null) return
 
-    // 1. Blinking tab title when outside
+    
+
     if (insideRadius === false) {
       let toggle = false
       alertIntervalRef.current = setInterval(() => {
@@ -690,7 +750,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
       document.title = 'ClassTrack Checked-In'
     }
 
-    // 2. State transition notifications (in-app + push)
+    
+
     if (prevInsideRef.current !== null && prevInsideRef.current !== insideRadius) {
       if (!insideRadius) {
         triggerInAppNotification('You are outside the classroom boundary. Please return.', 'warning')
@@ -732,14 +793,16 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
     }
   }, [insideRadius, notificationPermission])
 
-  // Handle background tab recovery and network reconnection
+  
+
   useEffect(() => {
     if (!student || !sessionId) return
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         console.log('[Visibility] Tab became visible — triggering location refresh and socket re-join')
-        // Re-emit join event to ensure server knows we're back
+        
+
         if (socketRef.current?.connected) {
           socketRef.current.emit('join-room', sessionId)
           socketRef.current.emit('student-joined', {
@@ -757,7 +820,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
             }
           })
         }
-        // Force a fresh location update
+        
+
         if (navigator.geolocation && trackingStatusRef.current === 'tracking') {
           navigator.geolocation.getCurrentPosition(handleSuccess, () => {}, geoOptions)
         }
@@ -792,7 +856,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
 
   if (loading) {
     return (
-      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-ct-bg font-sans transition-colors duration-200">
+      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-transparent font-sans transition-colors duration-200">
+        <ThreeDBackground />
         <div className="w-10 h-10 border-4 border-violet-500/20 border-t-violet-500 rounded-full animate-spin mb-4" />
         <p className="text-ct-muted text-sm">Identifying attendance profile...</p>
       </div>
@@ -801,7 +866,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
 
   if (!student) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-ct-bg font-sans p-4 transition-colors duration-200">
+      <div className="min-h-screen w-full flex items-center justify-center bg-transparent font-sans p-4 transition-colors duration-200">
+        <ThreeDBackground />
         <div className="w-full max-w-md bg-ct-card border border-ct-border rounded-2xl p-8 text-center space-y-6 backdrop-blur-xl">
           <div className="w-16 h-16 bg-red-950/20 border border-red-900/30 rounded-2xl flex items-center justify-center mx-auto text-red-400">
             <ShieldAlert className="w-8 h-8" />
@@ -823,8 +889,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
 
   if (!hasOnboarded) {
     return (
-      <div className="relative min-h-screen w-full flex items-center justify-center bg-ct-bg font-sans overflow-hidden py-12 px-4 sm:px-6 lg:px-8 transition-colors duration-200">
-        {/* Floating Theme Switcher */}
+      <div className="relative min-h-screen w-full flex items-center justify-center bg-transparent font-sans overflow-hidden py-12 px-4 sm:px-6 lg:px-8 transition-colors duration-200">
+        <ThreeDBackground />
         <div className="absolute top-4 right-4 z-50">
           <button
             onClick={toggleTheme}
@@ -835,7 +901,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
           </button>
         </div>
 
-        {/* Background blobs */}
+        {}
         <div className="absolute top-[-20%] left-[-20%] w-[600px] h-[600px] rounded-full bg-violet-900/10 blur-[120px] pointer-events-none" />
         <div className="absolute bottom-[-20%] right-[-20%] w-[600px] h-[600px] rounded-full bg-indigo-900/10 blur-[120px] pointer-events-none" />
 
@@ -903,8 +969,8 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
   }
 
   return (
-    <div className="relative min-h-screen w-full flex items-center justify-center bg-ct-bg font-sans overflow-hidden py-12 px-4 sm:px-6 lg:px-8 transition-colors duration-200">
-      {/* Floating Theme Switcher */}
+    <div className="relative min-h-screen w-full flex items-center justify-center bg-transparent font-sans overflow-hidden py-12 px-4 sm:px-6 lg:px-8 transition-colors duration-200">
+      <ThreeDBackground />
       <div className="absolute top-4 right-4 z-50">
         <button
           onClick={toggleTheme}
@@ -915,7 +981,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
         </button>
       </div>
 
-      {/* In-App Toast Banner */}
+      {}
       {inAppNotification && (
         <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[2000] flex items-center gap-2.5 px-4 py-3 rounded-xl border backdrop-blur-md shadow-xl text-xs font-semibold animate-in fade-in slide-in-from-top duration-200 ${
           inAppNotification.type === 'success' 
@@ -927,7 +993,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
         </div>
       )}
 
-      {/* Background radial highlights */}
+      {}
       {insideRadius === false ? (
         <div className="absolute inset-0 bg-red-950/10 transition-colors duration-500 animate-pulse pointer-events-none" />
       ) : (
@@ -952,10 +1018,10 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
           </p>
         </div>
 
-        {/* Status Card */}
+        {}
         <div className="bg-ct-card backdrop-blur-xl border border-ct-border rounded-2xl shadow-2xl p-6 sm:p-8 space-y-6">
           
-          {/* Geofence Status Indicator */}
+          {}
           {isInsecureContext && (
             <div className="flex flex-col gap-2 p-4 rounded-xl bg-red-950/20 border border-red-900/30 text-red-200 text-xs text-left">
               <div className="flex items-center gap-2 font-bold text-red-400">
@@ -1032,7 +1098,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
             </div>
           )}
 
-          {/* Student Profile & Stats */}
+          {}
           <div className="border-t border-ct-border pt-6 space-y-4">
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div className="bg-ct-bg/60 border border-ct-border rounded-xl p-3">
@@ -1073,7 +1139,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
               </div>
             )}
 
-            {/* GPS Accuracy Indicator */}
+            {}
             {gpsAccuracy !== null && trackingStatus === 'tracking' && (
               <div className="bg-ct-bg/60 border border-ct-border rounded-xl p-4 space-y-2 text-left">
                 <div className="flex justify-between items-center text-xs text-ct-muted">
@@ -1104,7 +1170,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
               </div>
             )}
 
-            {/* Environment-agnostic network connection details for student devices */}
+            {}
             <div className="bg-ct-bg/60 border border-ct-border rounded-xl p-4 space-y-2.5 text-left">
               <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-ct-muted border-b border-ct-border pb-2">
                 <span>Network Status</span>
@@ -1147,7 +1213,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
             </div>
           </div>
 
-          {/* Diagnostics Debug Panel (Hidden behind Dev Mode) */}
+          {}
           {isDevMode && (
           <div className="bg-ct-bg/75 border border-ct-border rounded-xl p-4 mt-4 space-y-3 text-[11px] text-ct-muted text-left font-mono">
             <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider text-ct-muted border-b border-ct-border pb-2 mb-1 font-sans">
@@ -1215,7 +1281,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
                 </span>
               </div>
 
-              {/* Extra device context details */}
+              {}
               <div className="text-[10px] space-y-1 text-ct-muted pt-1">
                 <div className="flex justify-between">
                   <span>Secure Context:</span>
@@ -1289,7 +1355,7 @@ function StudentTrackContent({ params }: { params: Promise<{ sessionId: string }
           </div>
           )}
 
-          {/* Browser Notification Request bar */}
+          {}
           {'Notification' in window && notificationPermission !== 'granted' && (
             <button
               onClick={requestNotificationPermission}

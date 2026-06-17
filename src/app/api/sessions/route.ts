@@ -19,21 +19,24 @@ const patchSessionSchema = z.object({
   endNow: z.boolean().optional()
 })
 
-// Helper to get authenticated Admin from cookies
+
+
 function getAuthenticatedAdmin(request: NextRequest) {
   const token = request.cookies.get('token')?.value
   if (!token) return null
   return verifyToken(token)
 }
 
-// GET: Fetch session info
+
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const sessionId = searchParams.get('id')
 
     if (sessionId) {
-      // Fetch details of specific session
+      
+
       const session = await runWithRetry(() => db.session.findUnique({
         where: { id: sessionId }
       }))
@@ -46,7 +49,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ...session, isExpired })
     }
 
-    // Otherwise, fetch authenticated user's sessions
+    
+
     const admin = getAuthenticatedAdmin(request)
     if (!admin) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -63,7 +67,8 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST: Create a new session (Admin-only)
+
+
 export async function POST(request: NextRequest) {
   try {
     const admin = getAuthenticatedAdmin(request)
@@ -103,7 +108,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PATCH: Edit radius or duration of an active session (Admin-only)
+
+
 export async function PATCH(request: NextRequest) {
   try {
     const admin = getAuthenticatedAdmin(request)
@@ -120,7 +126,8 @@ export async function PATCH(request: NextRequest) {
 
     const { id, radius, duration, endNow } = parsed.data
 
-    // Verify session ownership
+    
+
     const existingSession = await runWithRetry(() => db.session.findUnique({
       where: { id }
     }))
@@ -154,7 +161,8 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-// DELETE: End session (Admin-only)
+
+
 export async function DELETE(request: NextRequest) {
   try {
     const admin = getAuthenticatedAdmin(request)
@@ -169,7 +177,8 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Session ID is required' }, { status: 400 })
     }
 
-    // Verify session ownership
+    
+
     const existingSession = await runWithRetry(() => db.session.findUnique({
       where: { id }
     }))
@@ -178,7 +187,8 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Session not found or forbidden' }, { status: 404 })
     }
 
-    // Mark session as inactive and set end time to now
+    
+
     await runWithRetry(() => db.session.update({
       where: { id },
       data: {

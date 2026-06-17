@@ -11,7 +11,8 @@ const trackLocationSchema = z.object({
   status: z.enum(['Inside', 'Warning', 'Outside']).optional()
 })
 
-// POST: Process student live coordinates
+
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -23,7 +24,8 @@ export async function POST(request: NextRequest) {
 
     const { studentId, sessionId, latitude, longitude, status } = parsed.data
 
-    // 1. Fetch classroom coordinates
+    
+
     const session = await runWithRetry(() => db.session.findUnique({
       where: { id: sessionId }
     }))
@@ -32,10 +34,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 })
     }
 
-    // Verify session active
+    
+
     const isExpired = new Date(session.endTime).getTime() < Date.now() || !session.isActive
     if (isExpired) {
-      // Mark student offline in the attendance table
+      
+
       await runWithRetry(() => db.attendance.updateMany({
         where: { sessionId, studentId },
         data: { status: 'Offline' }
@@ -43,7 +47,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'This attendance session has ended', sessionEnded: true }, { status: 400 })
     }
 
-    // 2. Haversine distance computation in meters
+    
+
     const distance = getDistanceInMeters(
       session.latitude,
       session.longitude,
@@ -51,7 +56,8 @@ export async function POST(request: NextRequest) {
       longitude
     )
 
-    // Baseline calculation, frontend 3-tick takes precedence
+    
+
     let computedStatus = 'Inside'
     if (distance > session.radius && distance <= session.radius + 10) computedStatus = 'Warning'
     else if (distance > session.radius + 10) computedStatus = 'Outside'
@@ -59,7 +65,8 @@ export async function POST(request: NextRequest) {
     const finalStatus = status || computedStatus
     const insideRadius = finalStatus === 'Inside' || finalStatus === 'Warning'
 
-    // 3. Upsert student's coordinate history
+    
+
     await runWithRetry(() => db.locationUpdate.upsert({
       where: { studentId },
       update: {
@@ -77,7 +84,8 @@ export async function POST(request: NextRequest) {
       }
     }))
 
-    // 4. Update attendance status based on the validated frontend status
+    
+
     await runWithRetry(() => db.attendance.updateMany({
       where: { sessionId, studentId },
       data: {

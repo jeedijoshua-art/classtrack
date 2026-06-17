@@ -12,7 +12,8 @@ export const db =
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
 
-// Database connection helper with retry capability (specifically to handle Neon DB cold starts)
+
+
 export async function runWithRetry<T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
   let lastError: any = null
   for (let i = 0; i < retries; i++) {

@@ -117,7 +117,8 @@ export default function DemoPage() {
     document.documentElement.classList.toggle('dark', nextTheme === 'dark')
   }
 
-  // Auto-advance steps
+  
+
   useEffect(() => {
     if (!isAutoPlaying) return
     const timer = setInterval(() => {
@@ -150,11 +151,11 @@ export default function DemoPage() {
 
   return (
     <div className="relative min-h-screen w-full bg-ct-bg text-ct-text font-sans overflow-x-hidden transition-colors duration-300">
-      {/* Background Glows */}
+      {}
       <div className="absolute top-[-10%] left-[-10%] w-[600px] h-[600px] rounded-full bg-ct-glow-violet blur-[150px] pointer-events-none" />
       <div className="absolute bottom-[20%] right-[-10%] w-[400px] h-[400px] rounded-full bg-ct-glow-emerald blur-[150px] pointer-events-none" />
 
-      {/* Header */}
+      {}
       <header className="sticky top-0 z-40 w-full bg-ct-bg/75 backdrop-blur-md border-b border-ct-border py-4 px-6 md:px-12 flex justify-between items-center">
         <div className="flex items-center gap-2.5">
           <Link href="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
@@ -188,7 +189,7 @@ export default function DemoPage() {
         </div>
       </header>
 
-      {/* Hero */}
+      {}
       <section className="relative px-6 md:px-12 pt-16 pb-8 max-w-5xl mx-auto text-center">
         <div className="space-y-4">
           <h1 className="text-3xl sm:text-5xl font-black tracking-tight leading-tight">
@@ -200,7 +201,7 @@ export default function DemoPage() {
         </div>
       </section>
 
-      {/* Step Progress Indicator */}
+      {}
       <div className="max-w-5xl mx-auto px-6 md:px-12 mb-8">
         <div className="flex items-center gap-2">
           {DEMO_STEPS.map((s, idx) => {
@@ -234,10 +235,10 @@ export default function DemoPage() {
         </div>
       </div>
 
-      {/* Main Demo Content */}
+      {}
       <section className="max-w-5xl mx-auto px-6 md:px-12 pb-20">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-          {/* Left: Step Info */}
+          {}
           <div className="space-y-6">
             <div className="space-y-3">
               <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-gradient-to-r ${colorMap[step.color]} text-white`}>
@@ -265,7 +266,7 @@ export default function DemoPage() {
               ))}
             </div>
 
-            {/* Navigation Buttons */}
+            {}
             <div className="flex gap-3 pt-4">
               <button
                 onClick={() => goTo(Math.max(0, activeStep - 1))}
@@ -296,9 +297,9 @@ export default function DemoPage() {
             </div>
           </div>
 
-          {/* Right: Visual Demo Panel */}
+          {}
           <div className="bg-ct-card backdrop-blur-xl border border-ct-border rounded-2xl shadow-2xl p-6 sm:p-8 relative overflow-hidden min-h-[400px]">
-            {/* Decorative gradient */}
+            {}
             <div className={`absolute top-0 right-0 w-32 h-32 rounded-full bg-gradient-to-br ${colorMap[step.color]} opacity-5 blur-3xl pointer-events-none`} />
 
             {step.visual === 'session-create' && (
@@ -339,11 +340,11 @@ export default function DemoPage() {
                   <QrCode className="w-4 h-4 text-indigo-500" />
                   <span className="text-xs font-bold uppercase tracking-wider text-ct-muted">QR Code Generator</span>
                 </div>
-                {/* Mock QR */}
+                {}
                 <div className="bg-white p-6 rounded-2xl border-4 border-white shadow-lg">
                   <svg className="w-40 h-40" viewBox="0 0 100 100">
                     <rect width="100" height="100" fill="white" />
-                    {/* Simplified QR pattern */}
+                    {}
                     {[0,1,2,3,4,5,6].map(r => 
                       [0,1,2,3,4,5,6].map(c => {
                         if ((r < 3 || r > 3) && (c < 3 || c > 3)) {
@@ -395,7 +396,7 @@ export default function DemoPage() {
                   <Radio className="w-4 h-4 text-emerald-500 animate-pulse" />
                   <span className="text-xs font-bold uppercase tracking-wider text-ct-muted">GPS Tracking Active</span>
                 </div>
-                {/* Mock tracking visualization */}
+                {}
                 <div className="relative">
                   <svg className="w-full h-48 bg-ct-bg/50 border border-ct-border rounded-xl" viewBox="0 0 200 120">
                     <defs>
@@ -407,7 +408,7 @@ export default function DemoPage() {
                     <circle cx="100" cy="60" r="40" fill="rgba(16, 185, 129, 0.05)" stroke="#10b981" strokeWidth="1" strokeDasharray="3 2" />
                     <circle cx="100" cy="60" r="4" fill="#8b5cf6" className="animate-pulse" />
                     <circle cx="100" cy="60" r="1.5" fill="white" />
-                    {/* Student markers */}
+                    {}
                     <circle cx="88" cy="52" r="3" fill="#10b981" />
                     <circle cx="88" cy="52" r="6" fill="none" stroke="#10b981" strokeWidth="0.5" className="animate-ping origin-center" />
                     <circle cx="115" cy="68" r="3" fill="#10b981" />
@@ -475,7 +476,7 @@ export default function DemoPage() {
         </div>
       </section>
 
-      {/* CTA */}
+      {}
       <section className="px-6 md:px-12 py-16 border-t border-ct-border text-center max-w-3xl mx-auto">
         <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-ct-text mb-3">
           Ready to try it yourself?
@@ -492,7 +493,7 @@ export default function DemoPage() {
         </Link>
       </section>
 
-      {/* Footer */}
+      {}
       <footer className="border-t border-ct-border py-8 px-6 md:px-12 bg-ct-card-solid/10 text-ct-muted text-xs flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-2">
           <div className="flex items-center justify-center w-6 h-6 rounded-md bg-gradient-to-tr from-violet-600 to-indigo-600">

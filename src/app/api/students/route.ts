@@ -4,7 +4,8 @@ import { verifyToken } from '@/lib/jwt'
 
 export async function GET(request: NextRequest) {
   try {
-    // Verify admin token
+    
+
     const token = request.cookies.get('token')?.value
     const admin = token ? verifyToken(token) : null
     if (!admin) {

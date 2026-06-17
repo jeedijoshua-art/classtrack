@@ -2,6 +2,7 @@
 
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
+import ThreeDBackground from '@/components/ThreeDBackground'
 import { MapPin, User, Hash, GraduationCap, ShieldAlert, CheckCircle, Sun, Moon } from 'lucide-react'
 
 interface SessionInfo {
@@ -15,7 +16,8 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
   const router = useRouter()
   const { sessionId } = use(params)
 
-  // Theme support
+  
+
   const [theme, setTheme] = useState<'dark' | 'light'>('dark')
 
   useEffect(() => {
@@ -40,12 +42,14 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
     }
   }
 
-  // Session state
+  
+
   const [session, setSession] = useState<SessionInfo | null>(null)
   const [loadingSession, setLoadingSession] = useState(true)
   const [sessionError, setSessionError] = useState<string | null>(null)
 
-  // Form states
+  
+
   const [name, setName] = useState('')
   const [rollNumber, setRollNumber] = useState('')
   const [department, setDepartment] = useState('')
@@ -53,9 +57,11 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
-  // Fetch session details on load
+  
+
   useEffect(() => {
-    // Redirect if they are already checked in (found in localStorage)
+    
+
     const stored = localStorage.getItem(`classtrack_student_${sessionId}`)
     if (stored) {
       try {
@@ -128,10 +134,12 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
         setSubmitting(false)
       } else {
         setSuccess(true)
-        // Store student session info in localStorage so if they close the browser, they can resume
+        
+
         localStorage.setItem(`classtrack_student_${sessionId}`, JSON.stringify(data.student))
         
-        // Wait a brief second to show success and redirect
+        
+
         setTimeout(() => {
           router.push(`/track/${sessionId}?studentId=${data.student.id}`)
         }, 1500)
@@ -171,8 +179,8 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
   }
 
   return (
-    <div className="relative min-h-screen w-full flex items-center justify-center bg-ct-bg font-sans overflow-hidden py-12 px-4 sm:px-6 lg:px-8 transition-colors duration-200">
-      {/* Floating Theme Switcher */}
+    <div className="relative min-h-screen w-full flex items-center justify-center bg-transparent font-sans overflow-hidden py-12 px-4 sm:px-6 lg:px-8 transition-colors duration-200">
+      <ThreeDBackground />
       <div className="absolute top-4 right-4 z-50">
         <button
           onClick={toggleTheme}
@@ -183,7 +191,7 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
         </button>
       </div>
 
-      {/* Background blobs */}
+      {}
       <div className="absolute top-[-20%] left-[-20%] w-[600px] h-[600px] rounded-full bg-violet-900/10 blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-20%] right-[-20%] w-[600px] h-[600px] rounded-full bg-indigo-900/10 blur-[120px] pointer-events-none" />
 
@@ -299,7 +307,7 @@ export default function StudentJoin({ params }: { params: Promise<{ sessionId: s
             </form>
           )}
           
-          {/* Network connection details for student devices */}
+          {}
           <div className="bg-ct-bg/60 border border-ct-border rounded-xl p-4 mt-4 space-y-2 text-[10px] text-ct-muted">
             <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider text-ct-muted border-b border-ct-border pb-2 mb-1">
               <span>Network Status</span>
