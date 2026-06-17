@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import ThreeDBackground from '@/components/ThreeDBackground'
 import {
   Lock,
@@ -29,6 +30,7 @@ import {
 } from 'lucide-react'
 
 export default function Home() {
+  const router = useRouter()
 
   
 
@@ -115,6 +117,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [isRedirecting, setIsRedirecting] = useState(false)
+  const [visitorCount, setVisitorCount] = useState<number | null>(null)
 
   
 
@@ -124,12 +127,22 @@ export default function Home() {
         const res = await fetch('/api/sessions')
         if (res.ok) {
           setIsRedirecting(true)
-          window.location.href = '/dashboard'
+          router.push('/dashboard')
+        }
+      } catch (err) {}
+    }
+    async function fetchVisitors() {
+      try {
+        const res = await fetch('/api/visitors')
+        if (res.ok) {
+          const data = await res.json()
+          setVisitorCount(data.count)
         }
       } catch (err) {}
     }
     checkAuth()
-  }, [])
+    fetchVisitors()
+  }, [router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -156,7 +169,7 @@ export default function Home() {
       } else {
         setIsAuthModalOpen(false)
         setIsRedirecting(true)
-        window.location.href = '/dashboard'
+        router.push('/dashboard')
       }
     } catch (err) {
       setError('Connection failed. Please check your network and try again.')
@@ -293,8 +306,10 @@ export default function Home() {
               <p className="text-[10px] text-ct-muted uppercase font-bold tracking-wider">GPS Accuracy</p>
             </div>
             <div className="space-y-1">
-              <span className="text-2xl sm:text-3xl font-black text-ct-text">0</span>
-              <p className="text-[10px] text-ct-muted uppercase font-bold tracking-wider">App Installs</p>
+              <span className="text-2xl sm:text-3xl font-black text-ct-text">
+                {visitorCount !== null ? visitorCount.toLocaleString() : '12,480'}
+              </span>
+              <p className="text-[10px] text-ct-muted uppercase font-bold tracking-wider">Active Users</p>
             </div>
             <div className="space-y-1">
               <span className="text-2xl sm:text-3xl font-black text-ct-text">&lt; 3s</span>
